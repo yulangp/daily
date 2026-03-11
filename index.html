@@ -11,11 +11,8 @@
 <link rel="manifest" href="./manifest.json"/>
 <link rel="apple-touch-icon" href="./icon-192.png"/>
 <title>daily</title>
-
-<!-- Firebase SDK (real-time database) -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-
 <style>
 :root{
   --serif:Georgia,"Times New Roman","Songti SC","SimSun",serif;
@@ -28,55 +25,38 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;overflow:hidden;}
 body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscroll-behavior:none;}
-
-/* ── SCREENS ── */
-.screen{position:fixed;inset:0;transition:opacity .3s,transform .3s;background:linear-gradient(160deg,var(--cream) 0%,var(--peach) 52%,var(--lavender) 100%);}
+.screen{position:fixed;inset:0;transition:opacity .3s,transform .3s;
+  background:linear-gradient(160deg,var(--cream) 0%,var(--peach) 52%,var(--lavender) 100%);}
 .screen.hidden{opacity:0!important;pointer-events:none!important;transform:translateY(16px)!important;}
-
-/* ── SHARED LOGIN/SETUP STYLES ── */
-.center-wrap{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  height:100%;padding:32px 24px;padding-top:calc(var(--safe-top) + 32px);
-  overflow-y:auto;-webkit-overflow-scrolling:touch;
-}
+.center-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:100%;padding:32px 24px;padding-top:calc(var(--safe-top) + 32px);overflow-y:auto;}
 .big-icon{font-size:3.6rem;margin-bottom:10px;}
 .brand{font-family:var(--serif);font-size:2.6rem;color:var(--brown);font-style:italic;margin-bottom:5px;}
 .sub{font-size:.8rem;color:var(--light);margin-bottom:36px;letter-spacing:.07em;}
 .form-box{width:100%;max-width:380px;}
 .flabel{font-size:.67rem;color:var(--mid);letter-spacing:.09em;text-transform:uppercase;margin-bottom:8px;display:block;}
-.ifield{
-  width:100%;border:1.5px solid rgba(212,149,122,.3);border-radius:16px;
+.ifield{width:100%;border:1.5px solid rgba(212,149,122,.3);border-radius:16px;
   padding:14px 16px;font-size:.95rem;font-family:var(--sans);
   background:rgba(255,255,255,.72);color:var(--brown);outline:none;
-  -webkit-appearance:none;transition:border-color .2s,box-shadow .2s;margin-bottom:12px;
-}
+  -webkit-appearance:none;transition:border-color .2s,box-shadow .2s;margin-bottom:12px;}
 .ifield:focus{border-color:var(--terra);box-shadow:0 0 0 3px rgba(212,149,122,.13);}
-.ifield.mono{font-family:monospace;font-size:.78rem;min-height:110px;resize:none;line-height:1.6;}
-.big-btn{
-  width:100%;padding:15px;border:none;border-radius:16px;
+.big-btn{width:100%;padding:15px;border:none;border-radius:16px;
   background:linear-gradient(135deg,var(--rose),var(--terra));
   color:#fff;font-size:.96rem;font-family:var(--sans);font-weight:600;
   cursor:pointer;box-shadow:0 7px 22px rgba(212,149,122,.4);-webkit-appearance:none;
-  letter-spacing:.04em;margin-top:4px;
-}
+  letter-spacing:.04em;margin-top:4px;}
 .big-btn:active{opacity:.85;}
-.big-btn.secondary{background:transparent;border:1.5px solid rgba(212,149,122,.35);
-  color:var(--terra);box-shadow:none;margin-top:8px;}
 .hint{font-size:.73rem;color:var(--light);text-align:center;line-height:1.7;margin-top:14px;}
-.hint a{color:var(--terra);text-decoration:none;}
 .hint span{display:inline-block;background:rgba(212,149,122,.1);border-radius:9px;padding:7px 13px;}
-.sync-status{
-  display:flex;align-items:center;gap:6px;font-size:.72rem;padding:6px 12px;
-  border-radius:50px;background:rgba(255,255,255,.7);cursor:default;
-  transition:background .2s;
-}
+.sync-status{display:flex;align-items:center;gap:6px;font-size:.72rem;padding:6px 12px;
+  border-radius:50px;background:rgba(255,255,255,.7);}
 .sync-dot{width:7px;height:7px;border-radius:50%;background:#ccc;flex-shrink:0;transition:background .4s;}
 .sync-dot.online{background:var(--green);}
 .sync-dot.offline{background:#ccc;}
 .sync-dot.syncing{background:var(--terra);animation:pulse .8s infinite;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
 
-/* ── APP SHELL ── */
+/* APP SHELL */
 #screen-app{display:flex;flex-direction:column;}
 .status-bar{height:var(--safe-top);flex-shrink:0;}
 .topnav{display:flex;align-items:center;justify-content:space-between;padding:12px 15px 7px;flex-shrink:0;}
@@ -91,7 +71,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscro
 .card{background:rgba(255,255,255,.78);border-radius:22px;padding:16px;
   box-shadow:0 5px 22px rgba(180,120,100,.11);margin-bottom:11px;}
 
-/* ── CALENDAR ── */
+/* CALENDAR */
 .cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;}
 .cal-month{font-family:var(--serif);font-size:1.06rem;color:var(--brown);}
 .nav-arrow{background:rgba(240,220,210,.5);border:none;border-radius:11px;
@@ -114,7 +94,9 @@ body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscro
 .emoji-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;width:100%;flex:1;}
 .emoji-grid.s1{grid-template-columns:1fr;}
 .cell-emoji{font-size:.8rem;line-height:1;text-align:center;
-  background:rgba(255,255,255,.42);border-radius:4px;padding:1px 0;}
+  background:rgba(255,255,255,.42);border-radius:4px;padding:1px 0;position:relative;}
+.cell-emoji.has-img::after{content:'';position:absolute;top:1px;right:1px;
+  width:4px;height:4px;background:var(--terra);border-radius:50%;}
 .day-cell.selected .cell-emoji{background:rgba(255,255,255,.2);}
 .more-badge{font-size:.46rem;color:var(--mid);text-align:center;
   background:rgba(255,255,255,.5);border-radius:3px;padding:1px;grid-column:1/-1;}
@@ -125,7 +107,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscro
 .legend-dot{width:6px;height:6px;border-radius:50%;}
 .legend-name{font-size:.65rem;color:var(--mid);}
 
-/* ── DAY PANEL ── */
+/* ENTRY CARD */
 .day-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
 .day-title{font-family:var(--serif);font-size:.96rem;color:var(--brown);}
 .day-count{font-size:.69rem;color:var(--light);}
@@ -142,8 +124,12 @@ body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscro
 .ec-author{font-size:.75rem;font-weight:600;}
 .ec-meta{font-size:.68rem;color:var(--mid);margin-top:1px;}
 .ec-note{font-size:.79rem;color:#6a4e45;margin-top:6px;line-height:1.55;white-space:pre-wrap;word-break:break-word;}
+/* Thumbnail strip in entry card */
+.ec-thumbs{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;}
+.ec-thumb{width:56px;height:56px;border-radius:8px;object-fit:cover;
+  background:rgba(212,149,122,.1);flex-shrink:0;}
 
-/* ── FEED ── */
+/* FEED */
 .section-label{font-size:.64rem;color:var(--light);letter-spacing:.08em;text-transform:uppercase;margin:0 0 7px;}
 .feed-item{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.6);
   border-radius:12px;padding:10px 11px;margin-bottom:6px;cursor:pointer;}
@@ -152,11 +138,13 @@ body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscro
 .fi-main{flex:1;min-width:0;}
 .fi-author{font-size:.75rem;font-weight:600;}
 .fi-note{font-size:.7rem;color:var(--mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px;}
-.fi-right{text-align:right;flex-shrink:0;}
+.fi-right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;}
 .fi-date{font-size:.67rem;color:var(--light);}
-.fi-time{font-size:.65rem;color:var(--light);margin-top:1px;}
+.fi-time{font-size:.65rem;color:var(--light);}
+.fi-img-badge{font-size:.6rem;color:var(--terra);background:rgba(232,165,152,.18);
+  border-radius:4px;padding:1px 4px;}
 
-/* ── PROFILE ── */
+/* PROFILE */
 .profile-avatar{width:66px;height:66px;border-radius:50%;display:flex;align-items:center;
   justify-content:center;font-family:var(--serif);font-size:1.65rem;color:#fff;margin:4px auto 11px;}
 .profile-name{text-align:center;font-family:var(--serif);font-size:1.1rem;color:var(--brown);margin-bottom:3px;}
@@ -171,14 +159,8 @@ body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscro
 .action-btn:active{background:rgba(212,149,122,.09);}
 .aicon{font-size:.98rem;}
 .logout-red{color:var(--red);border-color:rgba(200,80,80,.19);}
-.firebase-info{background:rgba(255,248,240,.8);border:1px solid rgba(212,149,122,.2);
-  border-radius:13px;padding:12px 14px;margin-bottom:8px;}
-.firebase-info-row{display:flex;justify-content:space-between;align-items:center;
-  font-size:.74rem;color:var(--mid);padding:3px 0;}
-.firebase-info-val{color:var(--brown);font-family:monospace;font-size:.7rem;
-  max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
-/* ── BOTTOM NAV ── */
+/* BOTTOM NAV */
 .bottom-nav{display:flex;border-top:1px solid rgba(212,149,122,.11);
   background:rgba(255,252,248,.95);padding-bottom:calc(var(--safe-bot) + 2px);flex-shrink:0;}
 .nav-tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -187,13 +169,13 @@ body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscro
 .nav-icon{font-size:1.2rem;line-height:1;}
 .nav-label{font-size:.57rem;margin-top:3px;}
 
-/* ── MODALS ── */
+/* MODALS */
 .modal-bg{position:fixed;inset:0;background:rgba(80,50,40,.34);
   display:flex;align-items:flex-end;justify-content:center;z-index:200;transition:opacity .25s;}
 .modal-bg.hidden{opacity:0!important;pointer-events:none!important;}
 .modal-sheet{background:#fff9f5;border-radius:26px 26px 0 0;
   padding:0 18px;padding-bottom:calc(var(--safe-bot) + 18px);
-  width:100%;max-height:91vh;overflow-y:auto;
+  width:100%;max-height:94vh;overflow-y:auto;
   transform:translateY(0);transition:transform .3s cubic-bezier(.32,.72,0,1);-webkit-overflow-scrolling:touch;}
 .modal-bg.hidden .modal-sheet{transform:translateY(100%);}
 .modal-handle{width:36px;height:4px;background:rgba(0,0,0,.1);border-radius:2px;margin:12px auto 16px;}
@@ -225,6 +207,38 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
 .btn-danger{padding:13px 13px;border:1.5px solid rgba(220,80,80,.21);border-radius:13px;
   background:transparent;color:var(--red);font-family:var(--sans);font-size:.84rem;cursor:pointer;}
 .btn-danger:active{background:rgba(220,80,80,.07);}
+
+/* ── IMAGE UPLOAD UI ── */
+.img-upload-area{
+  border:1.5px dashed rgba(212,149,122,.4);border-radius:14px;
+  padding:14px;background:rgba(255,248,244,.6);cursor:pointer;
+  transition:border-color .2s,background .2s;
+}
+.img-upload-area:active,.img-upload-area.drag-over{
+  border-color:var(--terra);background:rgba(232,165,152,.12);
+}
+.img-upload-inner{display:flex;flex-direction:column;align-items:center;gap:5px;pointer-events:none;}
+.img-upload-icon{font-size:1.6rem;}
+.img-upload-text{font-size:.78rem;color:var(--mid);}
+.img-upload-sub{font-size:.66rem;color:var(--light);}
+/* Preview grid */
+.img-preview-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px;}
+.img-preview-wrap{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;
+  background:rgba(212,149,122,.1);}
+.img-preview-wrap img{width:100%;height:100%;object-fit:cover;display:block;}
+.img-preview-wrap .del-img{
+  position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;
+  background:rgba(80,40,30,.7);border:none;color:#fff;font-size:.7rem;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;
+}
+.img-preview-wrap .del-img:active{background:rgba(200,60,60,.9);}
+.img-upload-loading{display:flex;align-items:center;justify-content:center;gap:6px;
+  font-size:.75rem;color:var(--mid);padding:8px 0;}
+.spinner{width:14px;height:14px;border:2px solid rgba(212,149,122,.3);
+  border-top-color:var(--terra);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* View entry */
 .ve-center{text-align:center;padding:6px 0 16px;}
 .ve-emoji{font-size:3rem;}
 .ve-mood{font-family:var(--serif);font-size:.96rem;color:var(--brown);margin-top:5px;}
@@ -234,35 +248,30 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
 .ve-time{font-size:.72rem;color:var(--mid);}
 .ve-text{font-size:.84rem;color:var(--brown);line-height:1.65;white-space:pre-wrap;}
 .ve-empty{font-size:.8rem;color:var(--light);font-style:italic;}
+/* Full-size image gallery in view modal */
+.ve-images{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+.ve-img{width:100%;border-radius:12px;object-fit:cover;max-height:260px;cursor:pointer;display:block;}
 
-/* ── TOAST ── */
+/* Fullscreen image lightbox */
+#lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:500;
+  display:flex;align-items:center;justify-content:center;padding:16px;}
+#lightbox.hidden{display:none;}
+#lightboxImg{max-width:100%;max-height:100%;border-radius:10px;object-fit:contain;}
+#lightboxClose{position:absolute;top:calc(var(--safe-top) + 14px);right:16px;
+  background:rgba(255,255,255,.15);border:none;color:#fff;width:34px;height:34px;
+  border-radius:50%;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+
+/* Toast */
 .toast{position:fixed;bottom:calc(var(--safe-bot) + 68px);left:50%;
   transform:translateX(-50%) translateY(0);background:rgba(90,62,54,.92);color:#fff;
   padding:9px 19px;border-radius:50px;font-size:.8rem;z-index:999;
   transition:opacity .3s,transform .3s;pointer-events:none;white-space:nowrap;}
 .toast.hidden{opacity:0;transform:translateX(-50%) translateY(10px);}
-
-/* ── SETUP STEPS ── */
-.step-indicator{display:flex;gap:6px;margin-bottom:24px;}
-.step-dot{width:8px;height:8px;border-radius:50%;background:rgba(212,149,122,.25);transition:background .3s;}
-.step-dot.active{background:var(--terra);}
-.setup-title{font-family:var(--serif);font-size:1.3rem;color:var(--brown);margin-bottom:6px;text-align:center;}
-.setup-desc{font-size:.8rem;color:var(--mid);text-align:center;line-height:1.65;margin-bottom:22px;}
-.setup-step{width:100%;max-width:400px;}
-.numbered-list{list-style:none;padding:0;margin-bottom:18px;}
-.numbered-list li{display:flex;gap:10px;font-size:.8rem;color:var(--mid);
-  padding:6px 0;border-bottom:1px solid rgba(212,149,122,.12);line-height:1.55;}
-.numbered-list li:last-child{border-bottom:none;}
-.nl-num{background:var(--terra);color:#fff;width:20px;height:20px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;font-size:.65rem;flex-shrink:0;margin-top:1px;}
-.nl-num a{color:#fff;}
-.err-msg{background:rgba(220,80,80,.1);border:1px solid rgba(220,80,80,.25);border-radius:10px;
-  padding:9px 13px;font-size:.76rem;color:var(--red);margin-top:10px;display:none;}
 </style>
 </head>
 <body>
 
-<!-- ═══ SCREEN 1: LOGIN ══════════════════════════════════════ -->
+<!-- LOGIN -->
 <div id="screen-login" class="screen">
   <div class="center-wrap">
     <div class="big-icon">📖</div>
@@ -277,59 +286,13 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
   </div>
 </div>
 
-<!-- ═══ SCREEN 2: FIREBASE SETUP ════════════════════════════ -->
-<div id="screen-setup" class="screen hidden">
-  <div class="center-wrap">
-    <div class="big-icon">☁️</div>
-    <div class="brand" style="font-size:1.8rem">连接云端</div>
-    <div class="sub" style="margin-bottom:20px">配置 Firebase 实现多设备实时同步</div>
-
-    <div class="setup-step" id="setup-step1">
-      <div class="step-indicator" style="justify-content:center">
-        <div class="step-dot active"></div><div class="step-dot"></div>
-      </div>
-      <div class="setup-title">第一步：创建 Firebase 项目</div>
-      <div class="setup-desc">前往 Firebase 控制台创建免费项目，只需 2 分钟，完全免费。</div>
-      <ul class="numbered-list">
-        <li><div class="nl-num"><a href="https://console.firebase.google.com" target="_blank">↗</a></div><div>打开 <strong>console.firebase.google.com</strong>，用 Google 账号登录</div></li>
-        <li><div class="nl-num">2</div><div>点击「添加项目」，输入项目名（如 <strong>daily-app</strong>），关闭 Google Analytics，创建</div></li>
-        <li><div class="nl-num">3</div><div>进入项目后，点击左侧「构建 → Realtime Database」→「创建数据库」，选「测试模式」，选离你最近的地区</div></li>
-        <li><div class="nl-num">4</div><div>进入「项目设置」（齿轮图标）→「您的应用」→ 点击 <strong>&lt;/&gt;</strong> Web 图标，注册应用，复制 <strong>firebaseConfig</strong> 对象</div></li>
-      </ul>
-      <button class="big-btn" onclick="goSetupStep2()">已完成，下一步 →</button>
-      <button class="big-btn secondary" onclick="skipSetup()">暂时跳过（仅本地存储）</button>
-    </div>
-
-    <div class="setup-step hidden" id="setup-step2">
-      <div class="step-indicator" style="justify-content:center">
-        <div class="step-dot"></div><div class="step-dot active"></div>
-      </div>
-      <div class="setup-title">第二步：粘贴配置</div>
-      <div class="setup-desc">将复制的 firebaseConfig 粘贴到下方输入框</div>
-      <textarea class="ifield mono" id="fbConfigInput" placeholder='粘贴 firebaseConfig 内容，例如：
-{
-  "apiKey": "AIza...",
-  "authDomain": "xxx.firebaseapp.com",
-  "databaseURL": "https://xxx.firebasedatabase.app",
-  "projectId": "xxx",
-  "storageBucket": "xxx.appspot.com",
-  "messagingSenderId": "...",
-  "appId": "1:..."
-}'></textarea>
-      <div class="err-msg" id="fbErr"></div>
-      <button class="big-btn" onclick="saveFbConfig()" style="margin-top:10px">连接 Firebase ☁️</button>
-      <button class="big-btn secondary" onclick="backSetupStep1()">← 上一步</button>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ SCREEN 3: MAIN APP ═══════════════════════════════════ -->
+<!-- MAIN APP -->
 <div id="screen-app" class="screen hidden">
   <div class="status-bar"></div>
   <div class="topnav">
     <span class="app-brand">daily</span>
     <div class="top-right">
-      <div class="sync-status" id="syncStatus" title="同步状态">
+      <div class="sync-status" id="syncStatus">
         <div class="sync-dot" id="syncDot"></div>
         <span id="syncLabel">离线</span>
       </div>
@@ -341,7 +304,7 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
   </div>
   <div class="scroll-area" id="scrollArea">
 
-    <!-- CALENDAR -->
+    <!-- CALENDAR TAB -->
     <div id="tab-calendar">
       <div class="card">
         <div class="cal-nav">
@@ -366,7 +329,7 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
       </div>
     </div>
 
-    <!-- FEED -->
+    <!-- FEED TAB -->
     <div id="tab-feed" style="display:none">
       <div class="card">
         <div class="section-label">全部记录</div>
@@ -374,19 +337,17 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
       </div>
     </div>
 
-    <!-- PROFILE -->
+    <!-- PROFILE TAB -->
     <div id="tab-profile" style="display:none">
       <div class="card">
         <div class="profile-avatar" id="profileAvatar"></div>
         <div class="profile-name" id="profileName"></div>
-        <div class="profile-sub" id="profileSub">daily 共享日历成员</div>
+        <div class="profile-sub">daily 共享日历成员</div>
         <div class="stat-row">
           <div class="stat-box"><div class="stat-num" id="statTotal">0</div><div class="stat-lbl">总记录</div></div>
           <div class="stat-box"><div class="stat-num" id="statMine">0</div><div class="stat-lbl">我的</div></div>
           <div class="stat-box"><div class="stat-num" id="statDays">0</div><div class="stat-lbl">记录天数</div></div>
         </div>
-        <div class="firebase-info" id="fbInfoBox"></div>
-        <button class="action-btn" onclick="reconfigFirebase()"><span class="aicon">⚙️</span>重新配置云端同步</button>
         <button class="action-btn logout-red" onclick="doLogout()"><span class="aicon">🚪</span>退出登录</button>
       </div>
     </div>
@@ -399,19 +360,50 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
   </nav>
 </div>
 
-<!-- ═══ ADD MODAL ════════════════════════════════════════════ -->
+<!-- ADD MODAL -->
 <div class="modal-bg hidden" id="modalAdd">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-title" id="addModalTitle">添加记录</div>
-    <div class="form-block"><label class="form-label">心情</label><div class="mood-grid" id="moodGrid"></div></div>
-    <div class="form-block"><label class="form-label">时间</label><input class="input-field" type="time" id="entryTime"/></div>
-    <div class="form-block"><label class="form-label">备注（可选）</label><textarea class="input-field" id="entryNote" placeholder="写下今天的心情…" maxlength="300"></textarea></div>
-    <div class="btn-row"><button class="btn-secondary" onclick="closeAdd()">取消</button><button class="btn-primary" onclick="saveEntry()">保存记录</button></div>
+
+    <div class="form-block">
+      <label class="form-label">心情</label>
+      <div class="mood-grid" id="moodGrid"></div>
+    </div>
+    <div class="form-block">
+      <label class="form-label">时间</label>
+      <input class="input-field" type="time" id="entryTime"/>
+    </div>
+    <div class="form-block">
+      <label class="form-label">备注（可选）</label>
+      <textarea class="input-field" id="entryNote" placeholder="写下今天的心情…" maxlength="300"></textarea>
+    </div>
+
+    <!-- IMAGE UPLOAD -->
+    <div class="form-block">
+      <label class="form-label">照片（最多 4 张）</label>
+      <div class="img-upload-area" id="imgUploadArea" onclick="triggerImgPick()">
+        <div class="img-upload-inner">
+          <div class="img-upload-icon">📷</div>
+          <div class="img-upload-text">点击上传照片</div>
+          <div class="img-upload-sub">支持 JPG / PNG · 自动压缩</div>
+        </div>
+      </div>
+      <div id="imgLoadingRow" class="img-upload-loading" style="display:none">
+        <div class="spinner"></div><span>压缩中…</span>
+      </div>
+      <div class="img-preview-grid" id="imgPreviewGrid"></div>
+      <input type="file" id="imgFileInput" accept="image/*" multiple style="display:none" onchange="handleImgFiles(this.files)"/>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="closeAdd()">取消</button>
+      <button class="btn-primary" id="saveBtn" onclick="saveEntry()">保存记录</button>
+    </div>
   </div>
 </div>
 
-<!-- ═══ VIEW MODAL ════════════════════════════════════════════ -->
+<!-- VIEW MODAL -->
 <div class="modal-bg hidden" id="modalView">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
@@ -419,9 +411,16 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
     <div class="ve-box">
       <div class="ve-row"><span class="ve-author" id="veAuthor"></span><span class="ve-time" id="veTime"></span></div>
       <div id="veText"></div>
+      <div class="ve-images" id="veImages"></div>
     </div>
     <div class="btn-row" id="veActions"></div>
   </div>
+</div>
+
+<!-- LIGHTBOX -->
+<div id="lightbox" class="hidden">
+  <button id="lightboxClose" onclick="closeLightbox()">✕</button>
+  <img id="lightboxImg" src="" alt=""/>
 </div>
 
 <div class="toast hidden" id="toast"></div>
@@ -434,6 +433,9 @@ const MOODS=[{emoji:"😊",label:"开心"},{emoji:"😌",label:"平静"},{emoji:
 const UC=["#e8a598","#8fb8d1","#98c9a3","#c9b1d0","#d4a96a","#89b4a8","#d18fa8","#9aadce"];
 const DAYS=["日","一","二","三","四","五","六"];
 const MONTHS=["一月","二月","三月","四月","五月","六月","七月","八月","九月","十月","十一月","十二月"];
+const MAX_IMG_PX = 1080;   // max side length after resize
+const IMG_QUALITY = 0.72;  // JPEG quality
+const MAX_IMGS = 4;
 
 // ══ HELPERS ═══════════════════════════════════════════════════
 const uc=n=>{let h=0;for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))%UC.length;return UC[h];};
@@ -450,15 +452,105 @@ let entries = [];
 let vY = new Date().getFullYear(), vM = new Date().getMonth();
 let selDay = null, selMood = MOODS[0], curTab = 'calendar';
 let fbApp = null, fbDb = null, fbRef = null, fbListener = null;
+let pendingImgs = [];   // base64 strings waiting to be saved
+
+// ══ IMAGE COMPRESSION ═════════════════════════════════════════
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let {width: w, height: h} = img;
+        if (w > MAX_IMG_PX || h > MAX_IMG_PX) {
+          if (w > h) { h = Math.round(h * MAX_IMG_PX / w); w = MAX_IMG_PX; }
+          else { w = Math.round(w * MAX_IMG_PX / h); h = MAX_IMG_PX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', IMG_QUALITY));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function triggerImgPick() {
+  if (pendingImgs.length >= MAX_IMGS) { toast(`最多上传 ${MAX_IMGS} 张`); return; }
+  document.getElementById('imgFileInput').value = '';
+  document.getElementById('imgFileInput').click();
+}
+
+async function handleImgFiles(files) {
+  const remaining = MAX_IMGS - pendingImgs.length;
+  const toProcess = Array.from(files).slice(0, remaining);
+  if (!toProcess.length) return;
+
+  document.getElementById('imgLoadingRow').style.display = 'flex';
+  document.getElementById('saveBtn').disabled = true;
+
+  try {
+    for (const file of toProcess) {
+      const b64 = await compressImage(file);
+      pendingImgs.push(b64);
+    }
+  } catch(e) {
+    toast('⚠️ 图片处理失败');
+  }
+
+  document.getElementById('imgLoadingRow').style.display = 'none';
+  document.getElementById('saveBtn').disabled = false;
+  renderImgPreviews();
+}
+
+function renderImgPreviews() {
+  const grid = document.getElementById('imgPreviewGrid');
+  grid.innerHTML = '';
+  const area = document.getElementById('imgUploadArea');
+
+  pendingImgs.forEach((b64, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'img-preview-wrap';
+    const img = document.createElement('img');
+    img.src = b64;
+    const del = document.createElement('button');
+    del.className = 'del-img';
+    del.innerHTML = '✕';
+    del.onclick = e => { e.stopPropagation(); pendingImgs.splice(i, 1); renderImgPreviews(); };
+    wrap.appendChild(img); wrap.appendChild(del);
+    grid.appendChild(wrap);
+  });
+
+  // Hide upload area when max reached
+  area.style.display = pendingImgs.length >= MAX_IMGS ? 'none' : 'block';
+}
+
+// Drag-and-drop support
+(function(){
+  const area = document.getElementById('imgUploadArea');
+  area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('drag-over'); });
+  area.addEventListener('dragleave', () => area.classList.remove('drag-over'));
+  area.addEventListener('drop', e => {
+    e.preventDefault(); area.classList.remove('drag-over');
+    handleImgFiles(e.dataTransfer.files);
+  });
+})();
 
 // ══ FIREBASE ══════════════════════════════════════════════════
-function loadFbConfig() {
-  try { return JSON.parse(localStorage.getItem('daily_fb_config') || 'null'); }
-  catch { return null; }
-}
-function saveFbConfigToStorage(cfg) {
-  localStorage.setItem('daily_fb_config', JSON.stringify(cfg));
-}
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyDFllVBcLbWpgl7XoZpo_XxcIFx2PXN-C4',
+  authDomain: 'daily-app-a4ff9.firebaseapp.com',
+  databaseURL: 'https://daily-app-a4ff9-default-rtdb.asia-southeast1.firebasedatabase.app',
+  projectId: 'daily-app-a4ff9',
+  storageBucket: 'daily-app-a4ff9.firebasestorage.app',
+  messagingSenderId: '169369596170',
+  appId: '1:169369596170:web:4e20bda5fbefdf72444af3'
+};
 
 function initFirebase(config) {
   try {
@@ -467,9 +559,7 @@ function initFirebase(config) {
     fbDb = firebase.database(fbApp);
     fbRef = fbDb.ref('daily_entries');
     setSyncStatus('syncing', '连接中…');
-
-    // Real-time listener — fires whenever any device writes data
-    if (fbListener) { fbRef.off('value', fbListener); }
+    if (fbListener) fbRef.off('value', fbListener);
     fbListener = fbRef.on('value', snapshot => {
       const data = snapshot.val();
       if (data) {
@@ -478,43 +568,34 @@ function initFirebase(config) {
         entries = remote.filter(e => e && e.id && e.date);
         entries.sort((a,b) => (b.date+b.time).localeCompare(a.date+a.time));
         saveLocal();
-      } else {
-        entries = [];
-      }
+      } else { entries = []; }
       renderAll();
       setSyncStatus('online', '已同步');
     }, err => {
-      console.error('Firebase error', err);
+      console.error(err);
       setSyncStatus('offline', '同步失败');
       toast('⚠️ 云端连接失败，使用本地数据');
-      loadLocal();
+      loadLocal(); renderAll();
     });
-
-    return true;
-  } catch(e) {
-    console.error(e);
-    setSyncStatus('offline', '离线');
-    return false;
-  }
+  } catch(e) { console.error(e); setSyncStatus('offline', '离线'); }
 }
 
-function writeToFirebase(entryList) {
+function writeToFirebase(list) {
   if (!fbRef) return;
-  // Convert array to object keyed by id for Firebase
+  setSyncStatus('syncing', '同步中…');
   const obj = {};
-  entryList.forEach(e => { obj[e.id] = e; });
-  fbRef.set(obj).catch(err => {
-    console.error('Write error', err);
-    toast('⚠️ 同步失败，已保存本地');
-  });
+  list.forEach(e => { obj[e.id] = e; });
+  fbRef.set(obj)
+    .then(() => setSyncStatus('online', '已同步'))
+    .catch(err => { console.error(err); toast('⚠️ 同步失败'); setSyncStatus('offline','同步失败'); });
 }
 
 function deleteFromFirebase(id) {
   if (!fbRef) return;
-  fbRef.child(id).remove().catch(err => console.error('Delete error', err));
+  fbRef.child(id).remove().catch(err => console.error(err));
 }
 
-// ══ LOCAL STORAGE FALLBACK ════════════════════════════════════
+// ══ LOCAL STORAGE ═════════════════════════════════════════════
 function loadLocal() {
   try { const r = localStorage.getItem('daily_entries'); entries = r ? JSON.parse(r) : []; }
   catch { entries = []; }
@@ -522,111 +603,34 @@ function loadLocal() {
 function saveLocal() {
   try { localStorage.setItem('daily_entries', JSON.stringify(entries)); } catch{}
 }
-
-// ══ SYNC STATUS UI ════════════════════════════════════════════
 function setSyncStatus(state, label) {
-  const dot = document.getElementById('syncDot');
-  const lbl = document.getElementById('syncLabel');
-  dot.className = 'sync-dot ' + state;
-  lbl.textContent = label;
-}
-
-// ══ SETUP FLOW ════════════════════════════════════════════════
-function goSetupStep2() {
-  hide('setup-step1'); show('setup-step2');
-}
-function backSetupStep1() {
-  hide('setup-step2'); show('setup-step1');
-}
-function skipSetup() {
-  localStorage.setItem('daily_setup_done', '1');
-  hide('screen-setup'); show('screen-app');
-  setSyncStatus('offline', '本地模式');
-  loadLocal(); renderAll();
-}
-function reconfigFirebase() {
-  localStorage.removeItem('daily_fb_config');
-  localStorage.removeItem('daily_setup_done');
-  hide('screen-app'); show('screen-setup');
-  hide('setup-step2'); show('setup-step1');
-}
-
-function saveFbConfig() {
-  const raw = document.getElementById('fbConfigInput').value.trim();
-  const errEl = document.getElementById('fbErr');
-  errEl.style.display = 'none';
-  
-  let cfg;
-  try {
-    // Accept either raw JS object notation or JSON
-    const cleaned = raw
-      .replace(/^[^{]*\{/, '{')   // strip leading "const x = "
-      .replace(/\}[^}]*$/, '}')   // strip trailing ";"
-      .replace(/([{,]\s*)(\w+)\s*:/g, '$1"$2":')  // quote unquoted keys
-      .replace(/'/g, '"');         // single → double quotes
-    cfg = JSON.parse(cleaned);
-  } catch {
-    errEl.textContent = '⚠️ 配置格式有误，请确保粘贴完整的 firebaseConfig 对象';
-    errEl.style.display = 'block'; return;
-  }
-
-  if (!cfg.apiKey || !cfg.projectId) {
-    errEl.textContent = '⚠️ 缺少 apiKey 或 projectId，请重新复制配置';
-    errEl.style.display = 'block'; return;
-  }
-  if (!cfg.databaseURL) {
-    errEl.textContent = '⚠️ 缺少 databaseURL，请确认 Realtime Database 已创建，并在配置中包含 databaseURL 字段';
-    errEl.style.display = 'block'; return;
-  }
-
-  saveFbConfigToStorage(cfg);
-  localStorage.setItem('daily_setup_done', '1');
-  hide('screen-setup'); show('screen-app');
-  initFirebase(cfg);
-  renderAll();
-  toast('✅ Firebase 已连接，开始实时同步！');
+  document.getElementById('syncDot').className = 'sync-dot ' + state;
+  document.getElementById('syncLabel').textContent = label;
 }
 
 // ══ AUTH ══════════════════════════════════════════════════════
 function doLogin() {
   const name = document.getElementById('loginInput').value.trim();
   if (!name) return;
-  username = name;
-  localStorage.setItem('daily_user', name);
-  hide('screen-login');
-
-  const cfg = loadFbConfig();
-  const setupDone = localStorage.getItem('daily_setup_done');
-
-  if (setupDone) {
-    show('screen-app');
-    if (cfg) initFirebase(cfg);
-    else { loadLocal(); setSyncStatus('offline','本地模式'); }
-    initApp();
-  } else {
-    show('screen-setup');
-  }
+  username = name; localStorage.setItem('daily_user', name);
+  hide('screen-login'); show('screen-app');
+  initFirebase(FIREBASE_CONFIG);
+  initApp();
 }
 document.getElementById('loginInput').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
-
 function doLogout() {
-  username = '';
-  localStorage.removeItem('daily_user');
+  username = ''; localStorage.removeItem('daily_user');
   if (fbListener && fbRef) fbRef.off('value', fbListener);
   fbListener = null;
-  hide('screen-app');
-  show('screen-login');
+  hide('screen-app'); show('screen-login');
   document.getElementById('loginInput').value = '';
   showTab('calendar');
 }
-
-// ══ INIT APP ══════════════════════════════════════════════════
 function initApp() {
   document.getElementById('topName').textContent = username;
   document.getElementById('topDot').style.background = uc(username);
   buildMoodGrid();
   document.getElementById('entryTime').value = nowTime();
-  if (!fbDb) renderAll();  // Firebase will trigger renderAll via listener
 }
 
 // ══ RENDER ════════════════════════════════════════════════════
@@ -656,9 +660,13 @@ function renderCalendar() {
     cell.className='day-cell'+(ds===td?' today':'')+(d===selDay?' selected':'');
     const num=document.createElement('span'); num.className='dnum'+(ds===td?' is-today':''); num.textContent=d; cell.appendChild(num);
     if(de.length){
-      const eg=document.createElement('div'), show=de.slice(0,4);
-      eg.className='emoji-grid'+(show.length===1?' s1':'');
-      show.forEach(e=>{const sp=document.createElement('span');sp.className='cell-emoji';sp.title=e.author;sp.textContent=e.mood.emoji;eg.appendChild(sp);});
+      const eg=document.createElement('div'), shown=de.slice(0,4);
+      eg.className='emoji-grid'+(shown.length===1?' s1':'');
+      shown.forEach(e=>{
+        const sp=document.createElement('span');
+        sp.className='cell-emoji'+(e.images&&e.images.length?' has-img':'');
+        sp.title=e.author; sp.textContent=e.mood.emoji; eg.appendChild(sp);
+      });
       if(de.length>4){const m=document.createElement('div');m.className='more-badge';m.textContent=`+${de.length-4}`;eg.appendChild(m);}
       cell.appendChild(eg);
     }
@@ -681,7 +689,11 @@ function renderDayPanel(){
   const cont=document.getElementById('dayEntries'); cont.innerHTML='';
   de.forEach(e=>{
     const c=document.createElement('div'); c.className='entry-card'; c.style.borderLeftColor=uc(e.author);
-    c.innerHTML=`<div class="ec-top"><span class="ec-emoji">${e.mood.emoji}</span><div class="ec-info"><div class="ec-author" style="color:${uc(e.author)}">${esc(e.author)}</div><div class="ec-meta">${e.time} · ${e.mood.label}</div></div></div>${e.note?`<div class="ec-note">${esc(e.note)}</div>`:''}`;
+    let thumbsHtml='';
+    if(e.images&&e.images.length){
+      thumbsHtml='<div class="ec-thumbs">'+e.images.slice(0,3).map(src=>`<img class="ec-thumb" src="${src}" loading="lazy"/>`).join('')+(e.images.length>3?`<div class="ec-thumb" style="display:flex;align-items:center;justify-content:center;font-size:.72rem;color:var(--mid)">+${e.images.length-3}</div>`:'')+'</div>';
+    }
+    c.innerHTML=`<div class="ec-top"><span class="ec-emoji">${e.mood.emoji}</span><div class="ec-info"><div class="ec-author" style="color:${uc(e.author)}">${esc(e.author)}</div><div class="ec-meta">${e.time} · ${e.mood.label}${e.images&&e.images.length?' · 📷'+e.images.length:''}</div></div></div>${e.note?`<div class="ec-note">${esc(e.note)}</div>`:''}${thumbsHtml}`;
     c.onclick=()=>openView(e); cont.appendChild(c);
   });
 }
@@ -695,7 +707,8 @@ function rFL(id,list){
   if(!list.length){el.innerHTML='<div style="text-align:center;padding:20px 0;font-size:.8rem;color:var(--light)">暂无记录 ✨</div>';return;}
   list.forEach(e=>{
     const item=document.createElement('div'); item.className='feed-item';
-    item.innerHTML=`<span class="fi-emoji">${e.mood.emoji}</span><div class="fi-main"><div class="fi-author" style="color:${uc(e.author)}">${esc(e.author)}</div><div class="fi-note">${esc(e.note||e.mood.label)}</div></div><div class="fi-right"><div class="fi-date">${e.date.slice(5)}</div><div class="fi-time">${e.time}</div></div>`;
+    const imgBadge=e.images&&e.images.length?`<span class="fi-img-badge">📷${e.images.length}</span>`:'';
+    item.innerHTML=`<span class="fi-emoji">${e.mood.emoji}</span><div class="fi-main"><div class="fi-author" style="color:${uc(e.author)}">${esc(e.author)}</div><div class="fi-note">${esc(e.note||e.mood.label)}</div></div><div class="fi-right"><div class="fi-date">${e.date.slice(5)}</div><div class="fi-time">${e.time}</div>${imgBadge}</div>`;
     item.onclick=()=>openView(e); el.appendChild(item);
   });
 }
@@ -711,19 +724,6 @@ function renderProfile(){
   document.getElementById('statTotal').textContent=entries.length;
   document.getElementById('statMine').textContent=mine.length;
   document.getElementById('statDays').textContent=days;
-
-  const cfg=loadFbConfig();
-  const box=document.getElementById('fbInfoBox');
-  if(cfg){
-    box.style.display='block';
-    box.innerHTML=`
-      <div class="firebase-info-row"><span>项目</span><span class="firebase-info-val">${esc(cfg.projectId||'—')}</span></div>
-      <div class="firebase-info-row"><span>同步状态</span><span class="firebase-info-val" id="fbStatusInProfile">—</span></div>
-    `;
-    document.getElementById('fbStatusInProfile').textContent=document.getElementById('syncLabel').textContent;
-  } else {
-    box.style.display='none';
-  }
 }
 
 // ══ CALENDAR NAV ══════════════════════════════════════════════
@@ -762,12 +762,19 @@ function openAdd(){
   document.getElementById('addModalTitle').textContent=`${vY}/${vM+1}/${selDay} 的记录`;
   document.getElementById('entryNote').value='';
   document.getElementById('entryTime').value=nowTime();
-  selMood=MOODS[0]; buildMoodGrid(); openM('modalAdd');
+  selMood=MOODS[0]; buildMoodGrid();
+  // Reset image state
+  pendingImgs=[];
+  document.getElementById('imgPreviewGrid').innerHTML='';
+  document.getElementById('imgUploadArea').style.display='block';
+  document.getElementById('imgLoadingRow').style.display='none';
+  document.getElementById('saveBtn').disabled=false;
+  openM('modalAdd');
 }
 function closeAdd(){ closeM('modalAdd'); }
+
 function saveEntry(){
   if(!selDay) return;
-  setSyncStatus('syncing','同步中…');
   const e={
     id: Date.now().toString(36)+Math.random().toString(36).slice(2,5),
     date: `${vY}-${p2(vM+1)}-${p2(selDay)}`,
@@ -775,17 +782,18 @@ function saveEntry(){
     mood: {emoji:selMood.emoji, label:selMood.label},
     note: document.getElementById('entryNote').value.trim(),
     author: username,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    images: pendingImgs.length ? [...pendingImgs] : null
   };
   entries.unshift(e);
   entries.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
   saveLocal();
-  if(fbRef) writeToFirebase(entries); // push to cloud → listener will update all devices
+  writeToFirebase(entries);
   closeAdd(); renderAll();
-  toast('✨ 已保存' + (fbRef ? '并同步' : '（本地）'));
+  toast('✨ 已保存' + (e.images ? ` · ${e.images.length}张图片` : ''));
 }
 
-// ══ VIEW / DELETE ═════════════════════════════════════════════
+// ══ VIEW ══════════════════════════════════════════════════════
 function openView(e){
   document.getElementById('veEmoji').textContent=e.mood.emoji;
   document.getElementById('veMood').textContent=e.mood.label;
@@ -793,13 +801,24 @@ function openView(e){
   document.getElementById('veAuthor').style.color=uc(e.author);
   document.getElementById('veTime').textContent=`${e.date} ${e.time}`;
   document.getElementById('veText').innerHTML=e.note?`<p class="ve-text">${esc(e.note)}</p>`:'<p class="ve-empty">无备注</p>';
+
+  // Images
+  const imgCont=document.getElementById('veImages'); imgCont.innerHTML='';
+  if(e.images&&e.images.length){
+    e.images.forEach(src=>{
+      const img=document.createElement('img');
+      img.className='ve-img'; img.src=src; img.loading='lazy';
+      img.onclick=()=>openLightbox(src);
+      imgCont.appendChild(img);
+    });
+  }
+
   const act=document.getElementById('veActions'); act.innerHTML='';
   if(e.author===username){
     const d=document.createElement('button'); d.className='btn-danger'; d.textContent='删除';
     d.onclick=()=>{
       entries=entries.filter(x=>x.id!==e.id);
-      saveLocal();
-      if(fbRef) deleteFromFirebase(e.id);
+      saveLocal(); deleteFromFirebase(e.id);
       closeM('modalView'); renderAll(); toast('已删除');
     };
     act.appendChild(d);
@@ -808,7 +827,17 @@ function openView(e){
   openM('modalView');
 }
 
-// ══ MODAL ═════════════════════════════════════════════════════
+// ══ LIGHTBOX ══════════════════════════════════════════════════
+function openLightbox(src){
+  document.getElementById('lightboxImg').src=src;
+  show('lightbox');
+}
+function closeLightbox(){ hide('lightbox'); }
+document.getElementById('lightbox').addEventListener('click', e=>{
+  if(e.target===document.getElementById('lightbox')) closeLightbox();
+});
+
+// ══ MODAL HELPERS ═════════════════════════════════════════════
 function openM(id){ document.getElementById(id).classList.remove('hidden'); }
 function closeM(id){ document.getElementById(id).classList.add('hidden'); }
 document.querySelectorAll('.modal-bg').forEach(bg=>bg.addEventListener('click',e=>{if(e.target===bg)bg.classList.add('hidden');}));
@@ -822,17 +851,8 @@ function toast(msg){
 
 // ══ AUTO START ════════════════════════════════════════════════
 if(username){
-  hide('screen-login');
-  const cfg=loadFbConfig();
-  const setupDone=localStorage.getItem('daily_setup_done');
-  if(setupDone){
-    show('screen-app');
-    if(cfg){ initFirebase(cfg); }
-    else { loadLocal(); setSyncStatus('offline','本地模式'); }
-    initApp();
-  } else {
-    show('screen-setup');
-  }
+  hide('screen-login'); show('screen-app');
+  initFirebase(FIREBASE_CONFIG); initApp();
 } else {
   setTimeout(()=>document.getElementById('loginInput').focus(), 300);
 }
