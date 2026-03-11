@@ -1,0 +1,24 @@
+{
+  "name": "daily — 共同日记",
+  "short_name": "daily",
+  "description": "记录每一天的心情与时光",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fef6ec",
+  "theme_color": "#d4957a",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
