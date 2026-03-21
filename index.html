@@ -20,6 +20,8 @@
   --cream:#fef6ec;--peach:#fde8e0;--rose:#e8a598;--terra:#d4957a;
   --brown:#5a3e36;--mid:#8a6050;--light:#c0a090;--lavender:#f0e6f6;
   --green:#6ab87a;--red:#d06060;
+  --together:#f8c8d4;--together-dark:#e07090;
+  --apart:#c8daf8;--apart-dark:#6090d0;
   --safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
@@ -30,7 +32,8 @@ body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscro
 .screen.hidden{opacity:0!important;pointer-events:none!important;transform:translateY(16px)!important;}
 .center-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;
   height:100%;padding:32px 24px;padding-top:calc(var(--safe-top) + 32px);overflow-y:auto;}
-.big-icon{font-size:3.6rem;margin-bottom:10px;}
+.big-icon{font-size:3.6rem;margin-bottom:10px;animation:floatIn .8s ease-out;}
+@keyframes floatIn{from{opacity:0;transform:translateY(-20px) scale(.7);}to{opacity:1;transform:translateY(0) scale(1);}}
 .brand{font-family:var(--serif);font-size:2.6rem;color:var(--brown);font-style:italic;margin-bottom:5px;}
 .sub{font-size:.8rem;color:var(--light);margin-bottom:36px;letter-spacing:.07em;}
 .form-box{width:100%;max-width:380px;}
@@ -82,13 +85,22 @@ body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscro
 .cal-wday{text-align:center;font-size:.59rem;color:var(--light);padding:1px 0 6px;}
 .day-cell{display:flex;flex-direction:column;align-items:center;
   border-radius:11px;cursor:pointer;padding:4px 1px 3px;min-height:50px;
-  user-select:none;transition:background .1s;}
+  user-select:none;transition:background .15s,transform .1s;position:relative;}
 .day-cell:active{transform:scale(.91);}
 .day-cell.today{background:rgba(232,165,152,.18);}
 .day-cell.selected{background:linear-gradient(135deg,var(--rose),var(--terra))!important;
   box-shadow:0 4px 12px rgba(212,149,122,.42);}
 .day-cell.selected .dnum{color:#fff!important;font-weight:700;}
 .day-cell.empty{cursor:default;pointer-events:none;}
+/* Together/apart status colors */
+.day-cell.status-together{background:rgba(248,200,212,.35);}
+.day-cell.status-together::before{content:'';position:absolute;bottom:2px;left:50%;transform:translateX(-50%);
+  width:16px;height:3px;border-radius:2px;background:var(--together-dark);opacity:.6;}
+.day-cell.status-apart{background:rgba(200,218,248,.35);}
+.day-cell.status-apart::before{content:'';position:absolute;bottom:2px;left:50%;transform:translateX(-50%);
+  width:16px;height:3px;border-radius:2px;background:var(--apart-dark);opacity:.6;}
+.day-cell.selected.status-together::before,
+.day-cell.selected.status-apart::before{background:#fff;opacity:.5;}
 .dnum{font-size:.72rem;color:var(--brown);line-height:1;margin-bottom:2px;}
 .dnum.is-today{color:var(--terra);font-weight:700;}
 .emoji-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;width:100%;flex:1;}
@@ -107,6 +119,29 @@ body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscro
 .legend-dot{width:6px;height:6px;border-radius:50%;}
 .legend-name{font-size:.65rem;color:var(--mid);}
 
+/* Status legend */
+.status-legend{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+.status-legend-item{display:flex;align-items:center;gap:4px;font-size:.63rem;color:var(--mid);
+  background:rgba(255,255,255,.6);border-radius:50px;padding:3px 9px;cursor:pointer;transition:all .2s;}
+.status-legend-item:active{transform:scale(.95);}
+.status-legend-item .sl-bar{width:14px;height:4px;border-radius:2px;}
+.sl-together{background:var(--together-dark);}
+.sl-apart{background:var(--apart-dark);}
+.sl-none{background:var(--light);}
+
+/* Together status toolbar */
+.status-toolbar{display:flex;gap:6px;margin-bottom:12px;padding:10px;
+  background:rgba(255,248,244,.9);border-radius:14px;border:1.5px solid rgba(212,149,122,.2);}
+.status-btn{flex:1;padding:9px 6px;border:1.5px solid transparent;border-radius:10px;
+  background:rgba(240,225,215,.3);font-size:.73rem;font-family:var(--sans);
+  cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px;
+  transition:all .2s;color:var(--mid);}
+.status-btn:active{transform:scale(.94);}
+.status-btn.active-together{border-color:var(--together-dark);background:rgba(248,200,212,.3);color:var(--together-dark);}
+.status-btn.active-apart{border-color:var(--apart-dark);background:rgba(200,218,248,.3);color:var(--apart-dark);}
+.status-btn.active-clear{border-color:var(--light);background:rgba(192,160,144,.15);}
+.status-icon{font-size:1.1rem;}
+
 /* ENTRY CARD */
 .day-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
 .day-title{font-family:var(--serif);font-size:.96rem;color:var(--brown);}
@@ -119,12 +154,12 @@ body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscro
   margin-bottom:7px;border-left:3px solid;cursor:pointer;}
 .entry-card:active{transform:scale(.98);}
 .ec-top{display:flex;align-items:center;gap:8px;}
-.ec-emoji{font-size:1.35rem;}
+.ec-emoji{font-size:1.35rem;transition:transform .3s;}
+.entry-card:hover .ec-emoji{transform:scale(1.15) rotate(-5deg);}
 .ec-info{flex:1;}
 .ec-author{font-size:.75rem;font-weight:600;}
 .ec-meta{font-size:.68rem;color:var(--mid);margin-top:1px;}
 .ec-note{font-size:.79rem;color:#6a4e45;margin-top:6px;line-height:1.55;white-space:pre-wrap;word-break:break-word;}
-/* Thumbnail strip in entry card */
 .ec-thumbs{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;}
 .ec-thumb{width:56px;height:56px;border-radius:8px;object-fit:cover;
   background:rgba(212,149,122,.1);flex-shrink:0;}
@@ -160,6 +195,38 @@ body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscro
 .aicon{font-size:.98rem;}
 .logout-red{color:var(--red);border-color:rgba(200,80,80,.19);}
 
+/* Data management section */
+.data-section{margin-top:16px;padding-top:14px;border-top:1px solid rgba(212,149,122,.12);}
+.data-section-title{font-size:.64rem;color:var(--light);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px;}
+.data-info{font-size:.7rem;color:var(--mid);margin-bottom:10px;line-height:1.5;
+  background:rgba(255,248,244,.8);border-radius:10px;padding:10px 12px;}
+.data-info .di-row{display:flex;justify-content:space-between;margin-bottom:3px;}
+.data-info .di-label{color:var(--light);}
+.data-info .di-val{font-weight:600;color:var(--brown);}
+.github-input-row{display:flex;gap:6px;margin-bottom:8px;}
+.github-input-row input{flex:1;border:1.5px solid rgba(212,149,122,.26);border-radius:10px;
+  padding:10px 12px;font-size:.82rem;font-family:var(--sans);background:rgba(255,248,244,.8);
+  color:var(--brown);outline:none;-webkit-appearance:none;}
+.github-input-row input:focus{border-color:var(--terra);}
+.github-input-row input::placeholder{color:var(--light);}
+.btn-sm{padding:10px 14px;border:1.5px solid rgba(212,149,122,.26);border-radius:10px;
+  background:transparent;color:var(--mid);font-family:var(--sans);font-size:.78rem;
+  cursor:pointer;white-space:nowrap;}
+.btn-sm:active{background:rgba(212,149,122,.09);}
+.btn-sm.primary{background:linear-gradient(135deg,var(--rose),var(--terra));
+  color:#fff;border-color:transparent;font-weight:600;}
+.auto-save-row{display:flex;align-items:center;justify-content:space-between;
+  background:rgba(255,248,244,.8);border-radius:10px;padding:10px 12px;margin-bottom:8px;}
+.auto-save-label{font-size:.76rem;color:var(--mid);}
+.auto-save-time{font-size:.68rem;color:var(--light);}
+.toggle-wrap{position:relative;width:44px;height:24px;cursor:pointer;}
+.toggle-wrap input{display:none;}
+.toggle-track{position:absolute;inset:0;background:rgba(192,160,144,.3);border-radius:12px;transition:background .2s;}
+.toggle-wrap input:checked+.toggle-track{background:var(--terra);}
+.toggle-knob{position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;
+  border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.15);transition:transform .2s;}
+.toggle-wrap input:checked~.toggle-knob{transform:translateX(20px);}
+
 /* BOTTOM NAV */
 .bottom-nav{display:flex;border-top:1px solid rgba(212,149,122,.11);
   background:rgba(255,252,248,.95);padding-bottom:calc(var(--safe-bot) + 2px);flex-shrink:0;}
@@ -182,13 +249,22 @@ body{font-family:var(--sans);background:var(--cream);color:var(--brown);overscro
 .modal-title{font-family:var(--serif);font-size:1.06rem;color:var(--brown);margin-bottom:17px;}
 .form-label{font-size:.65rem;color:var(--mid);letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px;display:block;}
 .form-block{margin-bottom:15px;}
+/* Enhanced mood grid — 4 columns with animated selection */
 .mood-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
 .mood-btn{border:1.5px solid transparent;border-radius:11px;padding:9px 3px;
   background:rgba(240,225,215,.34);cursor:pointer;text-align:center;
-  display:flex;flex-direction:column;align-items:center;}
-.mood-btn:active{transform:scale(.91);}
-.mood-btn.active{border-color:var(--terra);background:rgba(232,165,152,.21);}
-.mb-emoji{font-size:1.45rem;}
+  display:flex;flex-direction:column;align-items:center;transition:all .2s;}
+.mood-btn:active{transform:scale(.88);}
+.mood-btn.active{border-color:var(--terra);background:rgba(232,165,152,.21);
+  transform:scale(1.05);}
+.mb-emoji{font-size:1.45rem;transition:transform .25s;}
+.mood-btn.active .mb-emoji{animation:emojiPop .4s ease-out;}
+@keyframes emojiPop{
+  0%{transform:scale(1);}
+  40%{transform:scale(1.35) rotate(-8deg);}
+  70%{transform:scale(.95) rotate(3deg);}
+  100%{transform:scale(1) rotate(0);}
+}
 .mb-label{font-size:.6rem;color:var(--mid);margin-top:3px;}
 .input-field{width:100%;border:1.5px solid rgba(212,149,122,.26);border-radius:13px;
   padding:12px 14px;font-size:.92rem;font-family:var(--sans);
@@ -221,7 +297,6 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
 .img-upload-icon{font-size:1.6rem;}
 .img-upload-text{font-size:.78rem;color:var(--mid);}
 .img-upload-sub{font-size:.66rem;color:var(--light);}
-/* Preview grid */
 .img-preview-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px;}
 .img-preview-wrap{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;
   background:rgba(212,149,122,.1);}
@@ -240,7 +315,8 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
 
 /* View entry */
 .ve-center{text-align:center;padding:6px 0 16px;}
-.ve-emoji{font-size:3rem;}
+.ve-emoji{font-size:3rem;animation:emojiFloat 2s ease-in-out infinite alternate;}
+@keyframes emojiFloat{0%{transform:translateY(0) rotate(0);}100%{transform:translateY(-6px) rotate(5deg);}}
 .ve-mood{font-family:var(--serif);font-size:.96rem;color:var(--brown);margin-top:5px;}
 .ve-box{background:rgba(240,225,215,.2);border-radius:13px;padding:13px;margin-bottom:14px;}
 .ve-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;}
@@ -248,7 +324,6 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
 .ve-time{font-size:.72rem;color:var(--mid);}
 .ve-text{font-size:.84rem;color:var(--brown);line-height:1.65;white-space:pre-wrap;}
 .ve-empty{font-size:.8rem;color:var(--light);font-style:italic;}
-/* Full-size image gallery in view modal */
 .ve-images{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
 .ve-img{width:100%;border-radius:12px;object-fit:cover;max-height:260px;cursor:pointer;display:block;}
 
@@ -261,12 +336,39 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
   background:rgba(255,255,255,.15);border:none;color:#fff;width:34px;height:34px;
   border-radius:50%;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;}
 
+/* Status modal */
+.status-modal-info{font-size:.78rem;color:var(--mid);line-height:1.55;margin-bottom:14px;
+  background:rgba(255,248,244,.8);border-radius:10px;padding:10px 12px;}
+.range-row{display:flex;gap:8px;align-items:center;margin-bottom:12px;}
+.range-row label{font-size:.72rem;color:var(--mid);flex-shrink:0;}
+.range-row input[type="date"]{flex:1;border:1.5px solid rgba(212,149,122,.26);border-radius:10px;
+  padding:9px 10px;font-size:.82rem;font-family:var(--sans);background:rgba(255,248,244,.8);
+  color:var(--brown);outline:none;-webkit-appearance:none;}
+.range-row input[type="date"]:focus{border-color:var(--terra);}
+.status-choice{display:flex;gap:8px;margin-bottom:14px;}
+.sc-btn{flex:1;padding:12px 8px;border:1.5px solid transparent;border-radius:12px;
+  background:rgba(240,225,215,.3);font-size:.8rem;font-family:var(--sans);
+  cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px;
+  transition:all .2s;color:var(--mid);}
+.sc-btn:active{transform:scale(.94);}
+.sc-btn.chosen{transform:scale(1.03);}
+.sc-btn.chosen-together{border-color:var(--together-dark);background:rgba(248,200,212,.3);color:var(--together-dark);}
+.sc-btn.chosen-apart{border-color:var(--apart-dark);background:rgba(200,218,248,.3);color:var(--apart-dark);}
+.sc-icon{font-size:1.3rem;}
+
 /* Toast */
 .toast{position:fixed;bottom:calc(var(--safe-bot) + 68px);left:50%;
   transform:translateX(-50%) translateY(0);background:rgba(90,62,54,.92);color:#fff;
   padding:9px 19px;border-radius:50px;font-size:.8rem;z-index:999;
   transition:opacity .3s,transform .3s;pointer-events:none;white-space:nowrap;}
 .toast.hidden{opacity:0;transform:translateX(-50%) translateY(10px);}
+
+/* Mood tab grid scroll */
+.mood-tabs{display:flex;gap:4px;margin-bottom:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
+.mood-tabs::-webkit-scrollbar{display:none;}
+.mood-tab{flex-shrink:0;padding:5px 10px;border-radius:50px;font-size:.67rem;
+  background:rgba(240,225,215,.4);color:var(--mid);border:none;cursor:pointer;font-family:var(--sans);}
+.mood-tab.active{background:var(--terra);color:#fff;}
 </style>
 </head>
 <body>
@@ -313,6 +415,18 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
           <button class="nav-arrow" onclick="changeMonth(1)">›</button>
         </div>
         <div class="legend-strip" id="calLegend"></div>
+        <!-- Status legend & toolbar -->
+        <div class="status-legend" id="statusLegend">
+          <div class="status-legend-item" onclick="openStatusModal()">
+            <div class="sl-bar sl-together"></div><span>在一起</span>
+          </div>
+          <div class="status-legend-item" onclick="openStatusModal()">
+            <div class="sl-bar sl-apart"></div><span>异地</span>
+          </div>
+          <div class="status-legend-item" onclick="openStatusModal()">
+            <div class="sl-bar sl-none"></div><span>设置状态 ✎</span>
+          </div>
+        </div>
         <div class="cal-grid" id="calGrid"></div>
       </div>
       <div class="card" id="dayPanel" style="display:none">
@@ -348,7 +462,55 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
           <div class="stat-box"><div class="stat-num" id="statMine">0</div><div class="stat-lbl">我的</div></div>
           <div class="stat-box"><div class="stat-num" id="statDays">0</div><div class="stat-lbl">记录天数</div></div>
         </div>
-        <button class="action-btn logout-red" onclick="doLogout()"><span class="aicon">🚪</span>退出登录</button>
+        <div class="stat-row">
+          <div class="stat-box"><div class="stat-num" id="statTogether">0</div><div class="stat-lbl">🩷 在一起天数</div></div>
+          <div class="stat-box"><div class="stat-num" id="statApart">0</div><div class="stat-lbl">💙 异地天数</div></div>
+        </div>
+
+        <!-- Data Management Section -->
+        <div class="data-section">
+          <div class="data-section-title">📦 数据管理</div>
+          <div class="data-info">
+            <div class="di-row"><span class="di-label">本地记录</span><span class="di-val" id="dataEntryCount">0 条</span></div>
+            <div class="di-row"><span class="di-label">本地状态</span><span class="di-val" id="dataStatusCount">0 段</span></div>
+            <div class="di-row"><span class="di-label">上次备份</span><span class="di-val" id="dataLastBackup">从未</span></div>
+            <div class="di-row"><span class="di-label">数据大小</span><span class="di-val" id="dataSize">—</span></div>
+          </div>
+
+          <div class="data-section-title" style="margin-top:12px">☁️ GitHub Gist 备份</div>
+          <div class="github-input-row">
+            <input id="gistTokenInput" type="password" placeholder="GitHub Token（gist权限）" autocomplete="off"/>
+          </div>
+          <div class="github-input-row">
+            <input id="gistIdInput" placeholder="Gist ID（留空自动创建）" autocomplete="off"/>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:10px;">
+            <button class="btn-sm primary" onclick="backupToGist()" style="flex:1">⬆ 备份到 Gist</button>
+            <button class="btn-sm" onclick="restoreFromGist()" style="flex:1">⬇ 从 Gist 恢复</button>
+          </div>
+
+          <div class="auto-save-row">
+            <div>
+              <div class="auto-save-label">定时自动备份</div>
+              <div class="auto-save-time" id="autoBackupTime">每 30 分钟</div>
+            </div>
+            <label class="toggle-wrap">
+              <input type="checkbox" id="autoBackupToggle" onchange="toggleAutoBackup()"/>
+              <div class="toggle-track"></div>
+              <div class="toggle-knob"></div>
+            </label>
+          </div>
+
+          <div style="display:flex;gap:6px;">
+            <button class="action-btn" onclick="exportJSON()" style="flex:1"><span class="aicon">💾</span>导出 JSON</button>
+            <button class="action-btn" onclick="importJSON()" style="flex:1"><span class="aicon">📂</span>导入 JSON</button>
+          </div>
+          <input type="file" id="importFileInput" accept=".json" style="display:none" onchange="handleImportFile(this.files)"/>
+        </div>
+
+        <div style="margin-top:14px;">
+          <button class="action-btn logout-red" onclick="doLogout()"><span class="aicon">🚪</span>退出登录</button>
+        </div>
       </div>
     </div>
 
@@ -368,6 +530,8 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
 
     <div class="form-block">
       <label class="form-label">心情</label>
+      <!-- Category tabs -->
+      <div class="mood-tabs" id="moodTabs"></div>
       <div class="mood-grid" id="moodGrid"></div>
     </div>
     <div class="form-block">
@@ -417,6 +581,45 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
   </div>
 </div>
 
+<!-- STATUS MODAL -->
+<div class="modal-bg hidden" id="modalStatus">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">设置在一起状态</div>
+    <div class="status-modal-info">
+      选择一段日期范围，标记你们是否在一起。日历上会用颜色区分 🩷 在一起 / 💙 异地。
+    </div>
+    <div class="range-row">
+      <label>从</label>
+      <input type="date" id="statusFrom"/>
+    </div>
+    <div class="range-row">
+      <label>到</label>
+      <input type="date" id="statusTo"/>
+    </div>
+    <div class="form-block">
+      <label class="form-label">状态</label>
+      <div class="status-choice" id="statusChoice">
+        <button class="sc-btn" onclick="pickStatus('together')" id="scTogether">
+          <span class="sc-icon">🩷</span>在一起
+        </button>
+        <button class="sc-btn" onclick="pickStatus('apart')" id="scApart">
+          <span class="sc-icon">💙</span>异地
+        </button>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="closeM('modalStatus')">取消</button>
+      <button class="btn-danger" onclick="clearStatusRange()">清除此范围</button>
+      <button class="btn-primary" onclick="saveStatus()">保存</button>
+    </div>
+    <div style="margin-top:14px;">
+      <div class="section-label">已设置的状态段</div>
+      <div id="statusList"></div>
+    </div>
+  </div>
+</div>
+
 <!-- LIGHTBOX -->
 <div id="lightbox" class="hidden">
   <button id="lightboxClose" onclick="closeLightbox()">✕</button>
@@ -426,15 +629,48 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
 <div class="toast hidden" id="toast"></div>
 
 <script>
-// ══ CONSTANTS ═════════════════════════════════════════════════
-const MOODS=[{emoji:"😊",label:"开心"},{emoji:"😌",label:"平静"},{emoji:"😢",label:"难过"},
-  {emoji:"😤",label:"生气"},{emoji:"😴",label:"疲惫"},{emoji:"🥰",label:"幸福"},
-  {emoji:"😰",label:"焦虑"},{emoji:"🤩",label:"兴奋"}];
+// ══ ENHANCED MOODS — categorized & more vivid ═══════════════════
+const MOOD_CATEGORIES = {
+  '常用': [
+    {emoji:'😊',label:'开心'},{emoji:'🥰',label:'幸福'},{emoji:'😌',label:'平静'},
+    {emoji:'😢',label:'难过'},{emoji:'😤',label:'生气'},{emoji:'😴',label:'疲惫'},
+    {emoji:'😰',label:'焦虑'},{emoji:'🤩',label:'兴奋'}
+  ],
+  '爱情': [
+    {emoji:'💕',label:'心动'},{emoji:'😘',label:'想你'},{emoji:'🥺',label:'撒娇'},
+    {emoji:'💞',label:'甜蜜'},{emoji:'😍',label:'迷恋'},{emoji:'🫠',label:'融化'},
+    {emoji:'💋',label:'亲亲'},{emoji:'🫶',label:'比心'}
+  ],
+  '开心': [
+    {emoji:'😆',label:'大笑'},{emoji:'🤭',label:'偷笑'},{emoji:'😋',label:'好吃'},
+    {emoji:'🥳',label:'庆祝'},{emoji:'✨',label:'闪亮'},{emoji:'🎉',label:'派对'},
+    {emoji:'😎',label:'酷'},{emoji:'🫧',label:'泡泡'}
+  ],
+  '难过': [
+    {emoji:'😭',label:'大哭'},{emoji:'🥲',label:'含泪'},{emoji:'💔',label:'心碎'},
+    {emoji:'😞',label:'失望'},{emoji:'😔',label:'沮丧'},{emoji:'🫣',label:'不忍看'},
+    {emoji:'😿',label:'委屈'},{emoji:'🌧️',label:'阴天'}
+  ],
+  '生活': [
+    {emoji:'☀️',label:'晴天'},{emoji:'🌙',label:'晚安'},{emoji:'☕',label:'咖啡'},
+    {emoji:'🍜',label:'干饭'},{emoji:'🏃',label:'运动'},{emoji:'📚',label:'学习'},
+    {emoji:'🎮',label:'游戏'},{emoji:'🎵',label:'音乐'}
+  ],
+  '特别': [
+    {emoji:'🦋',label:'蝴蝶'},{emoji:'🌈',label:'彩虹'},{emoji:'🍀',label:'幸运'},
+    {emoji:'🔥',label:'火热'},{emoji:'❄️',label:'冰冷'},{emoji:'🌸',label:'樱花'},
+    {emoji:'🎄',label:'节日'},{emoji:'👻',label:'搞怪'}
+  ]
+};
+// Flat list for backward compat
+const ALL_MOODS = Object.values(MOOD_CATEGORIES).flat();
+const MOODS = MOOD_CATEGORIES['常用']; // default
+
 const UC=["#e8a598","#8fb8d1","#98c9a3","#c9b1d0","#d4a96a","#89b4a8","#d18fa8","#9aadce"];
 const DAYS=["日","一","二","三","四","五","六"];
 const MONTHS=["一月","二月","三月","四月","五月","六月","七月","八月","九月","十月","十一月","十二月"];
-const MAX_IMG_PX = 1080;   // max side length after resize
-const IMG_QUALITY = 0.72;  // JPEG quality
+const MAX_IMG_PX = 1080;
+const IMG_QUALITY = 0.72;
 const MAX_IMGS = 4;
 
 // ══ HELPERS ═══════════════════════════════════════════════════
@@ -449,10 +685,14 @@ const hide=id=>document.getElementById(id).classList.add('hidden');
 // ══ STATE ═════════════════════════════════════════════════════
 let username = localStorage.getItem('daily_user') || '';
 let entries = [];
+let statusRanges = []; // [{from:'2025-01-01',to:'2025-01-05',status:'together'}]
 let vY = new Date().getFullYear(), vM = new Date().getMonth();
 let selDay = null, selMood = MOODS[0], curTab = 'calendar';
-let fbApp = null, fbDb = null, fbRef = null, fbListener = null;
-let pendingImgs = [];   // base64 strings waiting to be saved
+let curMoodCat = '常用';
+let fbApp = null, fbDb = null, fbRef = null, fbStatusRef = null, fbListener = null, fbStatusListener = null;
+let pendingImgs = [];
+let pickedStatus = 'together';
+let autoBackupTimer = null;
 
 // ══ IMAGE COMPRESSION ═════════════════════════════════════════
 function compressImage(file) {
@@ -490,19 +730,14 @@ async function handleImgFiles(files) {
   const remaining = MAX_IMGS - pendingImgs.length;
   const toProcess = Array.from(files).slice(0, remaining);
   if (!toProcess.length) return;
-
   document.getElementById('imgLoadingRow').style.display = 'flex';
   document.getElementById('saveBtn').disabled = true;
-
   try {
     for (const file of toProcess) {
       const b64 = await compressImage(file);
       pendingImgs.push(b64);
     }
-  } catch(e) {
-    toast('⚠️ 图片处理失败');
-  }
-
+  } catch(e) { toast('⚠️ 图片处理失败'); }
   document.getElementById('imgLoadingRow').style.display = 'none';
   document.getElementById('saveBtn').disabled = false;
   renderImgPreviews();
@@ -512,33 +747,23 @@ function renderImgPreviews() {
   const grid = document.getElementById('imgPreviewGrid');
   grid.innerHTML = '';
   const area = document.getElementById('imgUploadArea');
-
   pendingImgs.forEach((b64, i) => {
     const wrap = document.createElement('div');
     wrap.className = 'img-preview-wrap';
-    const img = document.createElement('img');
-    img.src = b64;
+    const img = document.createElement('img'); img.src = b64;
     const del = document.createElement('button');
-    del.className = 'del-img';
-    del.innerHTML = '✕';
+    del.className = 'del-img'; del.innerHTML = '✕';
     del.onclick = e => { e.stopPropagation(); pendingImgs.splice(i, 1); renderImgPreviews(); };
-    wrap.appendChild(img); wrap.appendChild(del);
-    grid.appendChild(wrap);
+    wrap.appendChild(img); wrap.appendChild(del); grid.appendChild(wrap);
   });
-
-  // Hide upload area when max reached
   area.style.display = pendingImgs.length >= MAX_IMGS ? 'none' : 'block';
 }
 
-// Drag-and-drop support
 (function(){
   const area = document.getElementById('imgUploadArea');
   area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('drag-over'); });
   area.addEventListener('dragleave', () => area.classList.remove('drag-over'));
-  area.addEventListener('drop', e => {
-    e.preventDefault(); area.classList.remove('drag-over');
-    handleImgFiles(e.dataTransfer.files);
-  });
+  area.addEventListener('drop', e => { e.preventDefault(); area.classList.remove('drag-over'); handleImgFiles(e.dataTransfer.files); });
 })();
 
 // ══ FIREBASE ══════════════════════════════════════════════════
@@ -558,7 +783,9 @@ function initFirebase(config) {
     fbApp = firebase.initializeApp(config, 'daily-' + Date.now());
     fbDb = firebase.database(fbApp);
     fbRef = fbDb.ref('daily_entries');
+    fbStatusRef = fbDb.ref('daily_status_ranges');
     setSyncStatus('syncing', '连接中…');
+
     if (fbListener) fbRef.off('value', fbListener);
     fbListener = fbRef.on('value', snapshot => {
       const data = snapshot.val();
@@ -577,6 +804,19 @@ function initFirebase(config) {
       toast('⚠️ 云端连接失败，使用本地数据');
       loadLocal(); renderAll();
     });
+
+    // Status ranges listener
+    if (fbStatusListener) fbStatusRef.off('value', fbStatusListener);
+    fbStatusListener = fbStatusRef.on('value', snapshot => {
+      const data = snapshot.val();
+      if (data) {
+        statusRanges = typeof data === 'object' && !Array.isArray(data)
+          ? Object.values(data) : (Array.isArray(data) ? data : []);
+        statusRanges = statusRanges.filter(s => s && s.from && s.to && s.status);
+        saveLocalStatus();
+      } else { statusRanges = []; }
+      renderAll();
+    }, err => { console.error(err); loadLocalStatus(); });
   } catch(e) { console.error(e); setSyncStatus('offline', '离线'); }
 }
 
@@ -590,6 +830,13 @@ function writeToFirebase(list) {
     .catch(err => { console.error(err); toast('⚠️ 同步失败'); setSyncStatus('offline','同步失败'); });
 }
 
+function writeStatusToFirebase() {
+  if (!fbStatusRef) return;
+  const obj = {};
+  statusRanges.forEach((s, i) => { obj['sr_'+i] = s; });
+  fbStatusRef.set(obj).catch(err => console.error(err));
+}
+
 function deleteFromFirebase(id) {
   if (!fbRef) return;
   fbRef.child(id).remove().catch(err => console.error(err));
@@ -597,11 +844,16 @@ function deleteFromFirebase(id) {
 
 // ══ LOCAL STORAGE ═════════════════════════════════════════════
 function loadLocal() {
-  try { const r = localStorage.getItem('daily_entries'); entries = r ? JSON.parse(r) : []; }
-  catch { entries = []; }
+  try { const r = localStorage.getItem('daily_entries'); entries = r ? JSON.parse(r) : []; } catch { entries = []; }
 }
 function saveLocal() {
   try { localStorage.setItem('daily_entries', JSON.stringify(entries)); } catch{}
+}
+function loadLocalStatus() {
+  try { const r = localStorage.getItem('daily_status_ranges'); statusRanges = r ? JSON.parse(r) : []; } catch { statusRanges = []; }
+}
+function saveLocalStatus() {
+  try { localStorage.setItem('daily_status_ranges', JSON.stringify(statusRanges)); } catch{}
 }
 function setSyncStatus(state, label) {
   document.getElementById('syncDot').className = 'sync-dot ' + state;
@@ -621,7 +873,8 @@ document.getElementById('loginInput').addEventListener('keydown', e => { if(e.ke
 function doLogout() {
   username = ''; localStorage.removeItem('daily_user');
   if (fbListener && fbRef) fbRef.off('value', fbListener);
-  fbListener = null;
+  if (fbStatusListener && fbStatusRef) fbStatusRef.off('value', fbStatusListener);
+  fbListener = null; fbStatusListener = null;
   hide('screen-app'); show('screen-login');
   document.getElementById('loginInput').value = '';
   showTab('calendar');
@@ -629,14 +882,31 @@ function doLogout() {
 function initApp() {
   document.getElementById('topName').textContent = username;
   document.getElementById('topDot').style.background = uc(username);
+  buildMoodTabs();
   buildMoodGrid();
   document.getElementById('entryTime').value = nowTime();
+  loadLocalStatus();
+  // Load GitHub settings
+  const gt = localStorage.getItem('daily_gist_token');
+  const gi = localStorage.getItem('daily_gist_id');
+  if (gt) document.getElementById('gistTokenInput').value = gt;
+  if (gi) document.getElementById('gistIdInput').value = gi;
+  const ab = localStorage.getItem('daily_auto_backup') === 'true';
+  document.getElementById('autoBackupToggle').checked = ab;
+  if (ab) startAutoBackup();
 }
 
 // ══ RENDER ════════════════════════════════════════════════════
 function renderAll() {
   renderCalendar(); renderDayPanel(); renderFeed();
   if (curTab === 'profile') renderProfile();
+}
+
+function getStatusForDate(dateStr) {
+  for (const sr of statusRanges) {
+    if (dateStr >= sr.from && dateStr <= sr.to) return sr.status;
+  }
+  return null;
 }
 
 function renderCalendar() {
@@ -656,8 +926,12 @@ function renderCalendar() {
   for(let i=0;i<first;i++){const el=document.createElement('div');el.className='day-cell empty';grid.appendChild(el);}
   for(let d=1;d<=days;d++){
     const ds=`${vY}-${p2(vM+1)}-${p2(d)}`, de=entries.filter(e=>e.date===ds);
+    const status = getStatusForDate(ds);
     const cell=document.createElement('div');
-    cell.className='day-cell'+(ds===td?' today':'')+(d===selDay?' selected':'');
+    let cls='day-cell'+(ds===td?' today':'')+(d===selDay?' selected':'');
+    if(status==='together') cls+=' status-together';
+    else if(status==='apart') cls+=' status-apart';
+    cell.className=cls;
     const num=document.createElement('span'); num.className='dnum'+(ds===td?' is-today':''); num.textContent=d; cell.appendChild(num);
     if(de.length){
       const eg=document.createElement('div'), shown=de.slice(0,4);
@@ -724,6 +998,27 @@ function renderProfile(){
   document.getElementById('statTotal').textContent=entries.length;
   document.getElementById('statMine').textContent=mine.length;
   document.getElementById('statDays').textContent=days;
+
+  // Together/apart stats
+  let togetherDays=0, apartDays=0;
+  statusRanges.forEach(sr=>{
+    const from=new Date(sr.from), to=new Date(sr.to);
+    const diff=Math.round((to-from)/(86400000))+1;
+    if(sr.status==='together') togetherDays+=diff;
+    else if(sr.status==='apart') apartDays+=diff;
+  });
+  document.getElementById('statTogether').textContent=togetherDays;
+  document.getElementById('statApart').textContent=apartDays;
+
+  // Data info
+  document.getElementById('dataEntryCount').textContent=entries.length+' 条';
+  document.getElementById('dataStatusCount').textContent=statusRanges.length+' 段';
+  const lb=localStorage.getItem('daily_last_backup');
+  document.getElementById('dataLastBackup').textContent=lb||'从未';
+  try{
+    const size=new Blob([JSON.stringify({entries,statusRanges})]).size;
+    document.getElementById('dataSize').textContent=size>1024?(size/1024).toFixed(1)+' KB':size+' B';
+  }catch{document.getElementById('dataSize').textContent='—';}
 }
 
 // ══ CALENDAR NAV ══════════════════════════════════════════════
@@ -744,14 +1039,30 @@ function showTab(tab){
   if(tab==='feed') renderFeed();
 }
 
-// ══ MOOD GRID ═════════════════════════════════════════════════
+// ══ MOOD TABS & GRID ═════════════════════════════════════════
+function buildMoodTabs(){
+  const container=document.getElementById('moodTabs'); container.innerHTML='';
+  Object.keys(MOOD_CATEGORIES).forEach(cat=>{
+    const btn=document.createElement('button');
+    btn.className='mood-tab'+(cat===curMoodCat?' active':'');
+    btn.textContent=cat;
+    btn.onclick=()=>{curMoodCat=cat;buildMoodTabs();buildMoodGrid();};
+    container.appendChild(btn);
+  });
+}
+
 function buildMoodGrid(){
   const g=document.getElementById('moodGrid'); g.innerHTML='';
-  MOODS.forEach(m=>{
+  const moods=MOOD_CATEGORIES[curMoodCat]||MOODS;
+  moods.forEach(m=>{
     const b=document.createElement('button');
-    b.className='mood-btn'+(m===selMood?' active':'');
+    b.className='mood-btn'+(m.emoji===selMood.emoji&&m.label===selMood.label?' active':'');
     b.innerHTML=`<span class="mb-emoji">${m.emoji}</span><span class="mb-label">${m.label}</span>`;
-    b.onclick=()=>{selMood=m;document.querySelectorAll('.mood-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');};
+    b.onclick=()=>{
+      selMood=m;
+      document.querySelectorAll('.mood-btn').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+    };
     g.appendChild(b);
   });
 }
@@ -762,8 +1073,7 @@ function openAdd(){
   document.getElementById('addModalTitle').textContent=`${vY}/${vM+1}/${selDay} 的记录`;
   document.getElementById('entryNote').value='';
   document.getElementById('entryTime').value=nowTime();
-  selMood=MOODS[0]; buildMoodGrid();
-  // Reset image state
+  selMood=MOODS[0]; curMoodCat='常用'; buildMoodTabs(); buildMoodGrid();
   pendingImgs=[];
   document.getElementById('imgPreviewGrid').innerHTML='';
   document.getElementById('imgUploadArea').style.display='block';
@@ -801,8 +1111,6 @@ function openView(e){
   document.getElementById('veAuthor').style.color=uc(e.author);
   document.getElementById('veTime').textContent=`${e.date} ${e.time}`;
   document.getElementById('veText').innerHTML=e.note?`<p class="ve-text">${esc(e.note)}</p>`:'<p class="ve-empty">无备注</p>';
-
-  // Images
   const imgCont=document.getElementById('veImages'); imgCont.innerHTML='';
   if(e.images&&e.images.length){
     e.images.forEach(src=>{
@@ -812,7 +1120,6 @@ function openView(e){
       imgCont.appendChild(img);
     });
   }
-
   const act=document.getElementById('veActions'); act.innerHTML='';
   if(e.author===username){
     const d=document.createElement('button'); d.className='btn-danger'; d.textContent='删除';
@@ -836,6 +1143,245 @@ function closeLightbox(){ hide('lightbox'); }
 document.getElementById('lightbox').addEventListener('click', e=>{
   if(e.target===document.getElementById('lightbox')) closeLightbox();
 });
+
+// ══ STATUS MODAL ══════════════════════════════════════════════
+function openStatusModal(){
+  const td=todayStr();
+  document.getElementById('statusFrom').value=td;
+  document.getElementById('statusTo').value=td;
+  pickedStatus='together';
+  updateStatusChoice();
+  renderStatusList();
+  openM('modalStatus');
+}
+
+function pickStatus(s){
+  pickedStatus=s;
+  updateStatusChoice();
+}
+
+function updateStatusChoice(){
+  const t=document.getElementById('scTogether'), a=document.getElementById('scApart');
+  t.className='sc-btn'+(pickedStatus==='together'?' chosen chosen-together':'');
+  a.className='sc-btn'+(pickedStatus==='apart'?' chosen chosen-apart':'');
+}
+
+function saveStatus(){
+  const from=document.getElementById('statusFrom').value;
+  const to=document.getElementById('statusTo').value;
+  if(!from||!to){toast('请选择日期范围');return;}
+  if(from>to){toast('开始日期不能晚于结束日期');return;}
+  // Remove overlapping ranges
+  statusRanges=statusRanges.filter(sr=>sr.to<from||sr.from>to);
+  statusRanges.push({from,to,status:pickedStatus});
+  statusRanges.sort((a,b)=>a.from.localeCompare(b.from));
+  saveLocalStatus();
+  writeStatusToFirebase();
+  renderAll();
+  renderStatusList();
+  toast(pickedStatus==='together'?'🩷 已标记在一起':'💙 已标记异地');
+}
+
+function clearStatusRange(){
+  const from=document.getElementById('statusFrom').value;
+  const to=document.getElementById('statusTo').value;
+  if(!from||!to) return;
+  statusRanges=statusRanges.filter(sr=>sr.to<from||sr.from>to);
+  saveLocalStatus();
+  writeStatusToFirebase();
+  renderAll();
+  renderStatusList();
+  toast('已清除状态');
+}
+
+function deleteStatusIdx(idx){
+  statusRanges.splice(idx,1);
+  saveLocalStatus();
+  writeStatusToFirebase();
+  renderAll();
+  renderStatusList();
+  toast('已删除');
+}
+
+function renderStatusList(){
+  const el=document.getElementById('statusList'); el.innerHTML='';
+  if(!statusRanges.length){
+    el.innerHTML='<div style="font-size:.75rem;color:var(--light);padding:8px 0">暂无状态记录</div>';
+    return;
+  }
+  statusRanges.forEach((sr,i)=>{
+    const item=document.createElement('div');
+    item.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(255,255,255,.6);border-radius:10px;margin-bottom:5px;font-size:.75rem;';
+    const icon=sr.status==='together'?'🩷':'💙';
+    const label=sr.status==='together'?'在一起':'异地';
+    const from=new Date(sr.from), to=new Date(sr.to);
+    const days=Math.round((to-from)/86400000)+1;
+    item.innerHTML=`<span>${icon}</span><span style="flex:1;color:var(--brown)">${sr.from} ~ ${sr.to} <span style="color:var(--light)">(${days}天 · ${label})</span></span><button onclick="deleteStatusIdx(${i})" style="background:none;border:none;color:var(--red);font-size:.7rem;cursor:pointer;padding:4px;">删除</button>`;
+    el.appendChild(item);
+  });
+}
+
+// ══ DATA MANAGEMENT ═══════════════════════════════════════════
+
+// Export all data as JSON
+function exportJSON(){
+  const data={
+    version:2,
+    exportedAt:new Date().toISOString(),
+    username,
+    entries,
+    statusRanges
+  };
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`daily-backup-${todayStr()}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('💾 已导出 JSON');
+}
+
+// Import JSON
+function importJSON(){
+  document.getElementById('importFileInput').click();
+}
+function handleImportFile(files){
+  if(!files.length) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      if(data.entries&&Array.isArray(data.entries)){
+        // Merge entries
+        const ids=new Set(entries.map(e=>e.id));
+        let added=0;
+        data.entries.forEach(ne=>{
+          if(ne&&ne.id&&!ids.has(ne.id)){entries.push(ne);ids.add(ne.id);added++;}
+        });
+        entries.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
+        saveLocal();
+        writeToFirebase(entries);
+        // Merge status ranges
+        if(data.statusRanges&&Array.isArray(data.statusRanges)){
+          data.statusRanges.forEach(sr=>{
+            if(!statusRanges.some(e=>e.from===sr.from&&e.to===sr.to)){
+              statusRanges.push(sr);
+            }
+          });
+          statusRanges.sort((a,b)=>a.from.localeCompare(b.from));
+          saveLocalStatus();
+          writeStatusToFirebase();
+        }
+        renderAll();
+        toast(`📂 已导入 ${added} 条新记录`);
+      } else { toast('⚠️ 无效的备份文件'); }
+    }catch{toast('⚠️ 文件解析失败');}
+  };
+  reader.readAsText(files[0]);
+}
+
+// GitHub Gist backup
+async function backupToGist(){
+  const token=document.getElementById('gistTokenInput').value.trim();
+  if(!token){toast('请输入 GitHub Token');return;}
+  localStorage.setItem('daily_gist_token',token);
+  const gistId=document.getElementById('gistIdInput').value.trim();
+  localStorage.setItem('daily_gist_id',gistId);
+
+  const data={
+    version:2,
+    exportedAt:new Date().toISOString(),
+    username,
+    entries,
+    statusRanges
+  };
+  const payload={
+    description:'daily app backup — '+new Date().toLocaleString('zh-CN'),
+    public:false,
+    files:{'daily-backup.json':{content:JSON.stringify(data)}}
+  };
+
+  try{
+    let resp;
+    if(gistId){
+      resp=await fetch('https://api.github.com/gists/'+gistId,{
+        method:'PATCH',headers:{'Authorization':'token '+token,'Content-Type':'application/json'},
+        body:JSON.stringify(payload)
+      });
+    }else{
+      resp=await fetch('https://api.github.com/gists',{
+        method:'POST',headers:{'Authorization':'token '+token,'Content-Type':'application/json'},
+        body:JSON.stringify(payload)
+      });
+    }
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const result=await resp.json();
+    if(!gistId&&result.id){
+      document.getElementById('gistIdInput').value=result.id;
+      localStorage.setItem('daily_gist_id',result.id);
+    }
+    localStorage.setItem('daily_last_backup',new Date().toLocaleString('zh-CN'));
+    toast('⬆ 已备份到 GitHub Gist');
+    if(curTab==='profile') renderProfile();
+  }catch(e){
+    console.error(e);
+    toast('⚠️ Gist 备份失败: '+e.message);
+  }
+}
+
+async function restoreFromGist(){
+  const token=document.getElementById('gistTokenInput').value.trim();
+  const gistId=document.getElementById('gistIdInput').value.trim();
+  if(!token||!gistId){toast('请输入 Token 和 Gist ID');return;}
+  localStorage.setItem('daily_gist_token',token);
+  localStorage.setItem('daily_gist_id',gistId);
+
+  try{
+    const resp=await fetch('https://api.github.com/gists/'+gistId,{
+      headers:{'Authorization':'token '+token}
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const result=await resp.json();
+    const file=result.files['daily-backup.json'];
+    if(!file){toast('⚠️ Gist 中无备份文件');return;}
+    const data=JSON.parse(file.content);
+    if(data.entries&&Array.isArray(data.entries)){
+      entries=data.entries.filter(e=>e&&e.id&&e.date);
+      entries.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
+      saveLocal();
+      writeToFirebase(entries);
+    }
+    if(data.statusRanges&&Array.isArray(data.statusRanges)){
+      statusRanges=data.statusRanges.filter(s=>s&&s.from&&s.to&&s.status);
+      saveLocalStatus();
+      writeStatusToFirebase();
+    }
+    renderAll();
+    toast('⬇ 已从 Gist 恢复数据');
+  }catch(e){
+    console.error(e);
+    toast('⚠️ 恢复失败: '+e.message);
+  }
+}
+
+// Auto backup
+function toggleAutoBackup(){
+  const on=document.getElementById('autoBackupToggle').checked;
+  localStorage.setItem('daily_auto_backup',on?'true':'false');
+  if(on){startAutoBackup();toast('⏰ 已开启自动备份');}
+  else{stopAutoBackup();toast('已关闭自动备份');}
+}
+function startAutoBackup(){
+  stopAutoBackup();
+  autoBackupTimer=setInterval(()=>{
+    const token=localStorage.getItem('daily_gist_token');
+    const gistId=localStorage.getItem('daily_gist_id');
+    if(token&&gistId) backupToGist();
+  },30*60*1000); // 30 min
+}
+function stopAutoBackup(){
+  if(autoBackupTimer){clearInterval(autoBackupTimer);autoBackupTimer=null;}
+}
 
 // ══ MODAL HELPERS ═════════════════════════════════════════════
 function openM(id){ document.getElementById(id).classList.remove('hidden'); }
