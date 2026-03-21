@@ -1129,18 +1129,49 @@ function deleteFromFirebase(id) {
     .catch(err => { if(window._unlockSync) window._unlockSync(); console.error(err); });
 }
 
-// ══ LOCAL STORAGE ═════════════════════════════════════════════
+// ══ LOCAL STORAGE (per-account isolation) ═════════════════════
+function _entryKey(){ return 'daily_entries_'+username; }
+function _statusKey(){ return 'daily_status_'+username; }
+
 function loadLocal() {
-  try { const r = localStorage.getItem('daily_entries'); entries = r ? dedupEntries(JSON.parse(r)) : []; } catch { entries = []; }
+  if(!username){ entries=[]; return; }
+  try {
+    // Try account-specific key first
+    let r = localStorage.getItem(_entryKey());
+    // Migrate from old shared key if account-specific doesn't exist yet
+    if(!r){
+      const old = localStorage.getItem('daily_entries');
+      if(old){
+        r = old;
+        localStorage.setItem(_entryKey(), old);
+        localStorage.removeItem('daily_entries');
+      }
+    }
+    entries = r ? dedupEntries(JSON.parse(r)) : [];
+  } catch { entries = []; }
 }
 function saveLocal() {
-  try { localStorage.setItem('daily_entries', JSON.stringify(entries)); } catch{}
+  if(!username) return;
+  try { localStorage.setItem(_entryKey(), JSON.stringify(entries)); } catch{}
 }
 function loadLocalStatus() {
-  try { const r = localStorage.getItem('daily_status_ranges'); statusRanges = r ? dedupStatusRanges(JSON.parse(r)) : []; } catch { statusRanges = []; }
+  if(!username){ statusRanges=[]; return; }
+  try {
+    let r = localStorage.getItem(_statusKey());
+    if(!r){
+      const old = localStorage.getItem('daily_status_ranges');
+      if(old){
+        r = old;
+        localStorage.setItem(_statusKey(), old);
+        localStorage.removeItem('daily_status_ranges');
+      }
+    }
+    statusRanges = r ? dedupStatusRanges(JSON.parse(r)) : [];
+  } catch { statusRanges = []; }
 }
 function saveLocalStatus() {
-  try { localStorage.setItem('daily_status_ranges', JSON.stringify(statusRanges)); } catch{}
+  if(!username) return;
+  try { localStorage.setItem(_statusKey(), JSON.stringify(statusRanges)); } catch{}
 }
 function setSyncStatus(state, label) {
   document.getElementById('syncDot').className = 'sync-dot ' + state;
@@ -1456,6 +1487,8 @@ async function doEditNick(){
 }
 
 function doLogout() {
+  // Clear in-memory data first — prevents next user from seeing it
+  entries = []; statusRanges = [];
   username = ''; nickname = '';
   localStorage.removeItem('daily_user');
   coupleId = ''; partnerName = '';
@@ -1465,7 +1498,6 @@ function doLogout() {
   hide('screen-app'); show('screen-login');
   document.getElementById('loginInput').value = '';
   document.getElementById('loginPassword').value = '';
-  // Reset to login mode
   authMode = 'register';
   toggleAuthMode();
   hideLoginError();
