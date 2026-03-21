@@ -369,6 +369,31 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
 .mood-tab{flex-shrink:0;padding:5px 10px;border-radius:50px;font-size:.67rem;
   background:rgba(240,225,215,.4);color:var(--mid);border:none;cursor:pointer;font-family:var(--sans);}
 .mood-tab.active{background:var(--terra);color:#fff;}
+
+/* COUPLE SYSTEM */
+.couple-card{background:linear-gradient(135deg,rgba(248,200,212,.35),rgba(240,230,246,.4));
+  border-radius:18px;padding:16px;margin-bottom:11px;border:1.5px solid rgba(224,112,144,.15);}
+.couple-header{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+.couple-heart{font-size:1.4rem;animation:heartbeat 1.5s ease-in-out infinite;}
+@keyframes heartbeat{0%,100%{transform:scale(1);}15%{transform:scale(1.15);}30%{transform:scale(1);}45%{transform:scale(1.1);}60%{transform:scale(1);}}
+.couple-title{font-family:var(--serif);font-size:1rem;color:var(--brown);}
+.couple-avatars{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:12px;}
+.couple-av{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-family:var(--serif);font-size:1.2rem;color:#fff;box-shadow:0 3px 10px rgba(0,0,0,.12);}
+.couple-link-icon{font-size:1.2rem;color:var(--together-dark);}
+.couple-names{text-align:center;font-size:.85rem;color:var(--brown);margin-bottom:12px;}
+.couple-names .partner{color:var(--together-dark);font-weight:600;}
+.couple-since{text-align:center;font-size:.68rem;color:var(--light);margin-bottom:10px;}
+.couple-actions{display:flex;gap:6px;}
+.couple-actions button{flex:1;}
+.not-linked-box{text-align:center;padding:8px 0;}
+.not-linked-text{font-size:.8rem;color:var(--mid);margin-bottom:12px;line-height:1.55;}
+.invite-code-display{font-family:'Courier New',monospace;font-size:2rem;letter-spacing:.3em;
+  color:var(--terra);font-weight:700;text-align:center;padding:16px;
+  background:rgba(255,255,255,.8);border-radius:14px;margin:12px 0;
+  border:2px dashed var(--terra);user-select:all;}
+.invite-code-hint{font-size:.72rem;color:var(--light);text-align:center;margin-top:6px;}
+.invite-timer{font-size:.74rem;color:var(--red);text-align:center;margin-top:4px;}
 </style>
 </head>
 <body>
@@ -487,10 +512,41 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
 
     <!-- PROFILE TAB -->
     <div id="tab-profile" style="display:none">
+      <!-- Couple Card -->
+      <div class="couple-card" id="coupleCard">
+        <div class="couple-header">
+          <span class="couple-heart">💞</span>
+          <span class="couple-title" id="coupleTitle">情侣空间</span>
+        </div>
+        <!-- Linked state -->
+        <div id="coupleLinked" style="display:none">
+          <div class="couple-avatars">
+            <div class="couple-av" id="coupleAv1"></div>
+            <span class="couple-link-icon">🔗</span>
+            <div class="couple-av" id="coupleAv2"></div>
+          </div>
+          <div class="couple-names"><span id="coupleName1"></span> &amp; <span class="partner" id="coupleName2"></span></div>
+          <div class="couple-since" id="coupleSince"></div>
+          <div class="couple-actions">
+            <button class="btn-danger" onclick="confirmUnlink()" style="font-size:.76rem;padding:10px">解除绑定</button>
+          </div>
+        </div>
+        <!-- Not linked state -->
+        <div id="coupleNotLinked">
+          <div class="not-linked-box">
+            <div class="not-linked-text">还没有绑定伴侣<br/>绑定后你们将共享所有日记和状态 💌</div>
+            <div class="couple-actions">
+              <button class="btn-primary" onclick="openInviteModal()" style="font-size:.82rem;padding:11px">邀请 TA</button>
+              <button class="btn-secondary" onclick="openLinkModal()" style="font-size:.82rem;padding:11px">输入邀请码</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="profile-avatar" id="profileAvatar"></div>
         <div class="profile-name" id="profileName"></div>
-        <div class="profile-sub">daily 共享日历成员</div>
+        <div class="profile-sub" id="profileSub">daily 共享日历成员</div>
         <div class="stat-row">
           <div class="stat-box"><div class="stat-num" id="statTotal">0</div><div class="stat-lbl">总记录</div></div>
           <div class="stat-box"><div class="stat-num" id="statMine">0</div><div class="stat-lbl">我的</div></div>
@@ -680,6 +736,44 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
   </div>
 </div>
 
+<!-- INVITE MODAL -->
+<div class="modal-bg hidden" id="modalInvite">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">邀请伴侣</div>
+    <div style="font-size:.8rem;color:var(--mid);line-height:1.55;margin-bottom:12px;">
+      将下面的邀请码发给你的另一半，TA 在「输入邀请码」中输入即可完成绑定。
+    </div>
+    <div class="invite-code-display" id="inviteCodeDisplay">------</div>
+    <div class="invite-code-hint">邀请码 10 分钟内有效，仅限一人使用</div>
+    <div class="invite-timer" id="inviteTimer"></div>
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn-secondary" onclick="closeM('modalInvite')">关闭</button>
+      <button class="btn-primary" onclick="copyInviteCode()">复制邀请码</button>
+    </div>
+  </div>
+</div>
+
+<!-- LINK MODAL -->
+<div class="modal-bg hidden" id="modalLink">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">输入邀请码</div>
+    <div style="font-size:.8rem;color:var(--mid);line-height:1.55;margin-bottom:12px;">
+      输入对方分享给你的 6 位邀请码，绑定后你们将共享所有日记数据 💕
+    </div>
+    <div class="form-block">
+      <input class="input-field" id="linkCodeInput" placeholder="输入 6 位邀请码" maxlength="6"
+        style="text-align:center;font-size:1.4rem;letter-spacing:.25em;font-family:'Courier New',monospace;" autocomplete="off"/>
+    </div>
+    <div id="linkError" style="font-size:.76rem;color:var(--red);text-align:center;margin-bottom:8px;display:none"></div>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="closeM('modalLink')">取消</button>
+      <button class="btn-primary" onclick="doLink()">确认绑定</button>
+    </div>
+  </div>
+</div>
+
 <!-- LIGHTBOX -->
 <div id="lightbox" class="hidden">
   <button id="lightboxClose" onclick="closeLightbox()">✕</button>
@@ -781,6 +875,8 @@ let fbApp = null, fbDb = null, fbRef = null, fbStatusRef = null, fbUsersRef = nu
 let pendingImgs = [];
 let pickedStatus = 'together';
 let authMode = 'login'; // 'login' or 'register'
+let coupleId = localStorage.getItem('daily_couple_id') || '';
+let partnerName = localStorage.getItem('daily_partner') || '';
 
 // ══ IMAGE COMPRESSION ═════════════════════════════════════════
 function compressImage(file) {
@@ -867,15 +963,44 @@ const FIREBASE_CONFIG = {
 
 function initFirebase(config) {
   try {
-    if (fbApp) { try { fbApp.delete(); } catch{} }
+    if (fbApp) {
+      // Detach old listeners before reinit
+      if(fbListener&&fbRef) fbRef.off('value',fbListener);
+      if(fbStatusListener&&fbStatusRef) fbStatusRef.off('value',fbStatusListener);
+      fbListener=null; fbStatusListener=null;
+      try { fbApp.delete(); } catch{}
+    }
     fbApp = firebase.initializeApp(config, 'daily-' + Date.now());
     fbDb = firebase.database(fbApp);
-    fbRef = fbDb.ref('daily_entries');
-    fbStatusRef = fbDb.ref('daily_status_ranges');
     fbUsersRef = fbDb.ref('daily_users');
+
+    // Determine data paths based on couple status
+    if(coupleId){
+      fbRef = fbDb.ref('daily_rooms/'+coupleId+'/entries');
+      fbStatusRef = fbDb.ref('daily_rooms/'+coupleId+'/status_ranges');
+    } else {
+      fbRef = fbDb.ref('daily_entries');
+      fbStatusRef = fbDb.ref('daily_status_ranges');
+    }
     setSyncStatus('syncing', '连接中…');
 
-    if (fbListener) fbRef.off('value', fbListener);
+    // Also check Firebase for couple info (in case linked from another device)
+    if(!coupleId && username){
+      fbUsersRef.child(username).once('value').then(snap=>{
+        const u=snap.val();
+        if(u && u.coupleId && u.partner){
+          coupleId=u.coupleId;
+          partnerName=u.partner;
+          localStorage.setItem('daily_couple_id',coupleId);
+          localStorage.setItem('daily_partner',partnerName);
+          // Re-init with couple room
+          reInitWithCoupleRoom();
+          renderCoupleCard();
+          toast('💕 已同步情侣绑定');
+        }
+      }).catch(()=>{});
+    }
+
     fbListener = fbRef.on('value', snapshot => {
       const data = snapshot.val();
       if (data) {
@@ -896,7 +1021,6 @@ function initFirebase(config) {
     });
 
     // Status ranges listener
-    if (fbStatusListener) fbStatusRef.off('value', fbStatusListener);
     fbStatusListener = fbStatusRef.on('value', snapshot => {
       const data = snapshot.val();
       if (data) {
@@ -1022,15 +1146,15 @@ async function doRegister(name, hash){
   try{
     if(!fbDb) initFirebaseLight();
     const snap = await fbUsersRef.child(name).once('value');
-    if(snap.val()){
-      showLoginError('该昵称已被注册，请直接登录');
+    if(snap.val() && snap.val().pwdHash){
+      showLoginError('该昵称已注册过密码，请切换到「登录」');
       return;
     }
-    // Save credentials to Firebase
+    // Save credentials to Firebase (new user or old user migrating)
     await fbUsersRef.child(name).set({pwdHash:hash, createdAt:new Date().toISOString()});
     saveLocalCred(name, hash);
     enterApp(name);
-    toast('🎉 注册成功');
+    toast('🎉 注册成功，密码已设置');
   }catch(e){
     console.error(e);
     showLoginError('网络错误，注册需要联网');
@@ -1056,15 +1180,13 @@ async function doLoginWithPwd(name, hash){
     const snap = await fbUsersRef.child(name).once('value');
     const userData = snap.val();
     if(!userData){
-      // User not found — maybe old user without password
-      showLoginError('用户不存在，请先注册');
+      // User not found in daily_users — old user or new user
+      showLoginError('该账号尚未设置密码，请切换到「注册」设置密码');
       return;
     }
     if(!userData.pwdHash){
       // Old user migrating: no password set yet
-      // Verify identity by name, then prompt to set password
       pendingMigrateName = name;
-      pendingMigrateHash = null;
       openM('modalSetPwd');
       return;
     }
@@ -1091,22 +1213,28 @@ function initFirebaseLight(){
   if(fbApp) return;
   fbApp = firebase.initializeApp(FIREBASE_CONFIG, 'daily-' + Date.now());
   fbDb = firebase.database(fbApp);
-  fbRef = fbDb.ref('daily_entries');
-  fbStatusRef = fbDb.ref('daily_status_ranges');
   fbUsersRef = fbDb.ref('daily_users');
+  if(coupleId){
+    fbRef = fbDb.ref('daily_rooms/'+coupleId+'/entries');
+    fbStatusRef = fbDb.ref('daily_rooms/'+coupleId+'/status_ranges');
+  } else {
+    fbRef = fbDb.ref('daily_entries');
+    fbStatusRef = fbDb.ref('daily_status_ranges');
+  }
 }
 
 function enterApp(name){
   username = name;
   localStorage.setItem('daily_user', name);
+  // Restore couple info
+  coupleId = localStorage.getItem('daily_couple_id') || '';
+  partnerName = localStorage.getItem('daily_partner') || '';
   hide('screen-login'); show('screen-app');
   loadLocal();
   loadLocalStatus();
   initApp();
   renderAll();
   initFirebase(FIREBASE_CONFIG);
-  // Check if this user has a password set (for migration)
-  checkMigration(name);
 }
 
 // Migration: old users who logged in before passwords existed
@@ -1217,6 +1345,7 @@ document.getElementById('loginPasswordConfirm').addEventListener('keydown', e =>
 
 function doLogout() {
   username = ''; localStorage.removeItem('daily_user');
+  coupleId = ''; partnerName = '';
   if (fbListener && fbRef) fbRef.off('value', fbListener);
   if (fbStatusListener && fbStatusRef) fbStatusRef.off('value', fbStatusListener);
   fbListener = null; fbStatusListener = null;
@@ -1224,7 +1353,7 @@ function doLogout() {
   document.getElementById('loginInput').value = '';
   document.getElementById('loginPassword').value = '';
   // Reset to login mode
-  authMode = 'register'; // set opposite so toggleAuthMode flips to 'login'
+  authMode = 'register';
   toggleAuthMode();
   hideLoginError();
   showTab('calendar');
@@ -1337,11 +1466,14 @@ function rFL(id,list){
 }
 
 function renderProfile(){
+  renderCoupleCard();
   const color=uc(username);
   const av=document.getElementById('profileAvatar');
   av.style.background=`linear-gradient(135deg,${color},${color}aa)`;
   av.textContent=username.charAt(0).toUpperCase();
   document.getElementById('profileName').textContent=username;
+  document.getElementById('profileSub').textContent=coupleId&&partnerName?
+    `💞 与 ${partnerName} 的共享空间`:'daily 共享日历成员';
   const mine=entries.filter(e=>e.author===username);
   const days=new Set(entries.map(e=>e.date)).size;
   document.getElementById('statTotal').textContent=entries.length;
@@ -1573,6 +1705,259 @@ function renderStatusList(){
   });
 }
 
+// ══ COUPLE SYSTEM ═════════════════════════════════════════════
+let currentInviteCode = '';
+let inviteTimerInterval = null;
+
+function renderCoupleCard(){
+  const linked = document.getElementById('coupleLinked');
+  const notLinked = document.getElementById('coupleNotLinked');
+  if(coupleId && partnerName){
+    linked.style.display='block';
+    notLinked.style.display='none';
+    document.getElementById('coupleTitle').textContent='💑 已绑定';
+    // Avatars
+    const av1=document.getElementById('coupleAv1');
+    const av2=document.getElementById('coupleAv2');
+    av1.style.background=`linear-gradient(135deg,${uc(username)},${uc(username)}aa)`;
+    av1.textContent=username.charAt(0).toUpperCase();
+    av2.style.background=`linear-gradient(135deg,${uc(partnerName)},${uc(partnerName)}aa)`;
+    av2.textContent=partnerName.charAt(0).toUpperCase();
+    document.getElementById('coupleName1').textContent=username;
+    document.getElementById('coupleName2').textContent=partnerName;
+    const since=localStorage.getItem('daily_couple_since');
+    document.getElementById('coupleSince').textContent=since?`绑定于 ${since}`:'';
+  } else {
+    linked.style.display='none';
+    notLinked.style.display='block';
+    document.getElementById('coupleTitle').textContent='情侣空间';
+  }
+}
+
+function genCode(){
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code='';
+  for(let i=0;i<6;i++) code+=chars[Math.floor(Math.random()*chars.length)];
+  return code;
+}
+
+async function openInviteModal(){
+  if(coupleId){toast('你已绑定伴侣');return;}
+  try{
+    if(!fbDb) initFirebaseLight();
+    const code=genCode();
+    const inviteRef=fbDb.ref('daily_invites/'+code);
+    await inviteRef.set({
+      from:username,
+      createdAt:new Date().toISOString(),
+      expiresAt:Date.now()+10*60*1000 // 10 min
+    });
+    currentInviteCode=code;
+    document.getElementById('inviteCodeDisplay').textContent=code;
+    openM('modalInvite');
+    // Start countdown
+    let remaining=600;
+    clearInterval(inviteTimerInterval);
+    const timerEl=document.getElementById('inviteTimer');
+    inviteTimerInterval=setInterval(()=>{
+      remaining--;
+      if(remaining<=0){
+        clearInterval(inviteTimerInterval);
+        timerEl.textContent='邀请码已过期，请重新生成';
+        inviteRef.remove().catch(()=>{});
+        return;
+      }
+      const m=Math.floor(remaining/60), s=remaining%60;
+      timerEl.textContent=`剩余 ${m}:${String(s).padStart(2,'0')}`;
+    },1000);
+    timerEl.textContent='剩余 10:00';
+    // Also listen for someone using the code
+    inviteRef.on('value', snap=>{
+      const val=snap.val();
+      if(val && val.accepted){
+        // Someone linked!
+        clearInterval(inviteTimerInterval);
+        coupleId=val.coupleId;
+        partnerName=val.acceptedBy;
+        localStorage.setItem('daily_couple_id',coupleId);
+        localStorage.setItem('daily_partner',partnerName);
+        localStorage.setItem('daily_couple_since',new Date().toLocaleDateString('zh-CN'));
+        inviteRef.off('value');
+        inviteRef.remove().catch(()=>{});
+        closeM('modalInvite');
+        // Re-init Firebase with couple room
+        reInitWithCoupleRoom();
+        renderCoupleCard();
+        toast('💕 绑定成功！欢迎来到你们的共享空间');
+      }
+    });
+  }catch(e){
+    console.error(e);
+    toast('⚠️ 生成邀请码失败，请检查网络');
+  }
+}
+
+function copyInviteCode(){
+  if(!currentInviteCode) return;
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(currentInviteCode).then(()=>toast('📋 已复制邀请码'));
+  } else {
+    // Fallback
+    const ta=document.createElement('textarea');
+    ta.value=currentInviteCode;
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast('📋 已复制邀请码');
+  }
+}
+
+function openLinkModal(){
+  if(coupleId){toast('你已绑定伴侣');return;}
+  document.getElementById('linkCodeInput').value='';
+  document.getElementById('linkError').style.display='none';
+  openM('modalLink');
+  setTimeout(()=>document.getElementById('linkCodeInput').focus(),200);
+}
+
+async function doLink(){
+  const code=document.getElementById('linkCodeInput').value.trim().toUpperCase();
+  const errEl=document.getElementById('linkError');
+  errEl.style.display='none';
+  if(!code||code.length!==6){errEl.textContent='请输入 6 位邀请码';errEl.style.display='block';return;}
+
+  try{
+    if(!fbDb) initFirebaseLight();
+    const inviteRef=fbDb.ref('daily_invites/'+code);
+    const snap=await inviteRef.once('value');
+    const invite=snap.val();
+
+    if(!invite){errEl.textContent='邀请码不存在或已过期';errEl.style.display='block';return;}
+    if(invite.accepted){errEl.textContent='邀请码已被使用';errEl.style.display='block';return;}
+    if(invite.expiresAt && Date.now()>invite.expiresAt){
+      errEl.textContent='邀请码已过期';errEl.style.display='block';
+      inviteRef.remove().catch(()=>{});
+      return;
+    }
+    if(invite.from===username){errEl.textContent='不能绑定自己哦~';errEl.style.display='block';return;}
+
+    // Create couple
+    const newCoupleId=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    const coupleRef=fbDb.ref('daily_couples/'+newCoupleId);
+    await coupleRef.set({
+      user1:invite.from,
+      user2:username,
+      createdAt:new Date().toISOString()
+    });
+
+    // Update both users
+    await fbUsersRef.child(invite.from).update({coupleId:newCoupleId, partner:username});
+    await fbUsersRef.child(username).update({coupleId:newCoupleId, partner:invite.from});
+
+    // Mark invite as accepted
+    await inviteRef.update({accepted:true, acceptedBy:username, coupleId:newCoupleId});
+
+    // Migrate existing data to couple room
+    await migrateDataToCoupleRoom(newCoupleId, invite.from);
+
+    // Save locally
+    coupleId=newCoupleId;
+    partnerName=invite.from;
+    localStorage.setItem('daily_couple_id',coupleId);
+    localStorage.setItem('daily_partner',partnerName);
+    localStorage.setItem('daily_couple_since',new Date().toLocaleDateString('zh-CN'));
+
+    closeM('modalLink');
+    // Re-init with couple room
+    reInitWithCoupleRoom();
+    renderCoupleCard();
+    toast('💕 绑定成功！');
+  }catch(e){
+    console.error(e);
+    errEl.textContent='绑定失败: '+e.message;errEl.style.display='block';
+  }
+}
+
+async function migrateDataToCoupleRoom(cId, otherUser){
+  const roomEntriesRef=fbDb.ref('daily_rooms/'+cId+'/entries');
+  const roomStatusRef=fbDb.ref('daily_rooms/'+cId+'/status_ranges');
+
+  // Collect existing entries from global store
+  const mergedEntries={};
+  // My local entries
+  entries.forEach(e=>{mergedEntries[e.id]=e;});
+  // Also try to read from global store (might have partner's data)
+  try{
+    const globalSnap=await fbDb.ref('daily_entries').once('value');
+    const gData=globalSnap.val();
+    if(gData){
+      const gList=typeof gData==='object'&&!Array.isArray(gData)?Object.values(gData):(Array.isArray(gData)?gData:[]);
+      gList.filter(e=>e&&e.id&&e.date&&(e.author===username||e.author===otherUser))
+        .forEach(e=>{mergedEntries[e.id]=e;});
+    }
+  }catch{}
+
+  // Write merged entries
+  await roomEntriesRef.set(mergedEntries).catch(()=>{});
+
+  // Merge status ranges
+  const mergedStatus={};
+  statusRanges.forEach((s,i)=>{mergedStatus['sr_'+i]=s;});
+  try{
+    const globalStatusSnap=await fbDb.ref('daily_status_ranges').once('value');
+    const sData=globalStatusSnap.val();
+    if(sData){
+      const sList=typeof sData==='object'&&!Array.isArray(sData)?Object.values(sData):(Array.isArray(sData)?sData:[]);
+      sList.filter(s=>s&&s.from&&s.to&&s.status).forEach((s,i)=>{
+        mergedStatus['sr_g'+i]=s;
+      });
+    }
+  }catch{}
+  await roomStatusRef.set(mergedStatus).catch(()=>{});
+}
+
+function reInitWithCoupleRoom(){
+  // Detach old listeners
+  if(fbListener&&fbRef) fbRef.off('value',fbListener);
+  if(fbStatusListener&&fbStatusRef) fbStatusRef.off('value',fbStatusListener);
+  fbListener=null; fbStatusListener=null;
+  // Re-init
+  initFirebase(FIREBASE_CONFIG);
+}
+
+function confirmUnlink(){
+  if(!confirm('确定要解除绑定吗？\n解绑后数据仍保留在各自本地，但不再共享同步。')) return;
+  doUnlink();
+}
+
+async function doUnlink(){
+  try{
+    if(!fbDb) initFirebaseLight();
+    if(coupleId){
+      // Remove couple record
+      await fbDb.ref('daily_couples/'+coupleId).remove().catch(()=>{});
+      // Clear coupleId on both users
+      await fbUsersRef.child(username).update({coupleId:null, partner:null}).catch(()=>{});
+      if(partnerName) await fbUsersRef.child(partnerName).update({coupleId:null, partner:null}).catch(()=>{});
+    }
+  }catch(e){console.error(e);}
+
+  // Save current data to local before switching
+  saveLocal();
+  saveLocalStatus();
+
+  // Clear couple state
+  coupleId=''; partnerName='';
+  localStorage.removeItem('daily_couple_id');
+  localStorage.removeItem('daily_partner');
+  localStorage.removeItem('daily_couple_since');
+
+  // Re-init without couple room (back to global)
+  reInitWithCoupleRoom();
+  renderCoupleCard();
+  toast('已解除绑定');
+}
+
 // ══ DATA MANAGEMENT ═══════════════════════════════════════════
 
 // Export all data as JSON
@@ -1743,16 +2128,26 @@ function toast(msg){
 
 // ══ AUTO START (OFFLINE-FIRST) ═══════════════════════════════
 if(username){
-  hide('screen-login'); show('screen-app');
-  // 1) Load local data FIRST — instant, no network needed
-  loadLocal();
-  loadLocalStatus();
-  initApp();
-  renderAll();
-  // 2) Then try connecting to Firebase to sync (overlay remote data when ready)
-  initFirebase(FIREBASE_CONFIG);
-  // 3) Check if old user needs to set password
-  setTimeout(()=>checkMigration(username), 2000);
+  const cachedCred = getLocalCred(username);
+  if(cachedCred){
+    // Has verified credential cached — auto-login
+    hide('screen-login'); show('screen-app');
+    loadLocal();
+    loadLocalStatus();
+    initApp();
+    renderAll();
+    initFirebase(FIREBASE_CONFIG);
+  } else {
+    // Old user without password — force login/register screen
+    // Pre-fill their name so they know which account
+    document.getElementById('loginInput').value = username;
+    username = ''; // clear so they must authenticate
+    // Switch to register mode so they set a password
+    authMode = 'login';
+    toggleAuthMode(); // flips to register
+    showLoginError('系统已升级，请为你的账号设置密码（选择「注册」）');
+    setTimeout(()=>document.getElementById('loginPassword').focus(), 300);
+  }
 } else {
   setTimeout(()=>document.getElementById('loginInput').focus(), 300);
 }
