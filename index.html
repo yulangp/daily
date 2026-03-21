@@ -382,8 +382,42 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
     <div class="form-box">
       <label class="flabel">你的昵称</label>
       <input class="ifield" id="loginInput" placeholder="输入昵称…" maxlength="20" autocomplete="off" inputmode="text"/>
-      <button class="big-btn" onclick="doLogin()">开始记录 →</button>
+      <label class="flabel">密码</label>
+      <input class="ifield" id="loginPassword" type="password" placeholder="输入密码…" maxlength="40" autocomplete="off"/>
+      <div id="loginConfirmWrap" style="display:none">
+        <label class="flabel">确认密码</label>
+        <input class="ifield" id="loginPasswordConfirm" type="password" placeholder="再次输入密码…" maxlength="40" autocomplete="off"/>
+      </div>
+      <div id="loginError" style="font-size:.76rem;color:var(--red);text-align:center;margin-bottom:10px;display:none"></div>
+      <button class="big-btn" id="loginBtn" onclick="doAuth()">登录 →</button>
+      <div class="login-toggle" style="text-align:center;margin-top:12px;">
+        <span style="font-size:.76rem;color:var(--mid)" id="loginToggleText">还没有账号？</span>
+        <button onclick="toggleAuthMode()" id="loginToggleBtn" style="background:none;border:none;color:var(--terra);font-size:.76rem;font-weight:600;cursor:pointer;text-decoration:underline;font-family:var(--sans);">注册</button>
+      </div>
       <div class="hint"><span>🔗 共享日历 · 所有成员实时同步</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- SET PASSWORD MODAL (for migrating old users) -->
+<div class="modal-bg hidden" id="modalSetPwd">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">设置密码</div>
+    <div style="font-size:.8rem;color:var(--mid);line-height:1.55;margin-bottom:16px;background:rgba(255,248,244,.8);border-radius:10px;padding:10px 12px;">
+      👋 欢迎回来！系统已升级，请为你的账号设置一个密码，以后登录需要密码验证。
+    </div>
+    <div class="form-block">
+      <label class="form-label">新密码</label>
+      <input class="input-field" type="password" id="migratePwd" placeholder="设置密码（至少4位）" maxlength="40"/>
+    </div>
+    <div class="form-block">
+      <label class="form-label">确认密码</label>
+      <input class="input-field" type="password" id="migratePwdConfirm" placeholder="再次输入密码" maxlength="40"/>
+    </div>
+    <div id="migrateError" style="font-size:.76rem;color:var(--red);margin-bottom:8px;display:none"></div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="doMigrateSetPwd()">确认设置</button>
     </div>
   </div>
 </div>
@@ -509,6 +543,7 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
         </div>
 
         <div style="margin-top:14px;">
+          <button class="action-btn" onclick="openChangePwd()"><span class="aicon">🔑</span>修改密码</button>
           <button class="action-btn logout-red" onclick="doLogout()"><span class="aicon">🚪</span>退出登录</button>
         </div>
       </div>
@@ -620,6 +655,31 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
   </div>
 </div>
 
+<!-- CHANGE PASSWORD MODAL -->
+<div class="modal-bg hidden" id="modalChangePwd">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">修改密码</div>
+    <div class="form-block">
+      <label class="form-label">当前密码</label>
+      <input class="input-field" type="password" id="changePwdOld" placeholder="输入当前密码" maxlength="40"/>
+    </div>
+    <div class="form-block">
+      <label class="form-label">新密码</label>
+      <input class="input-field" type="password" id="changePwdNew" placeholder="输入新密码（至少4位）" maxlength="40"/>
+    </div>
+    <div class="form-block">
+      <label class="form-label">确认新密码</label>
+      <input class="input-field" type="password" id="changePwdConfirm" placeholder="再次输入新密码" maxlength="40"/>
+    </div>
+    <div id="changePwdError" style="font-size:.76rem;color:var(--red);margin-bottom:8px;display:none"></div>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="closeM('modalChangePwd')">取消</button>
+      <button class="btn-primary" onclick="doChangePwd()">确认修改</button>
+    </div>
+  </div>
+</div>
+
 <!-- LIGHTBOX -->
 <div id="lightbox" class="hidden">
   <button id="lightboxClose" onclick="closeLightbox()">✕</button>
@@ -682,6 +742,34 @@ const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'
 const show=id=>document.getElementById(id).classList.remove('hidden');
 const hide=id=>document.getElementById(id).classList.add('hidden');
 
+// ══ DEDUP UTILITIES ══════════════════════════════════════════
+// Entries: deduplicate by id, keep the one with latest createdAt
+function dedupEntries(arr){
+  const map=new Map();
+  arr.forEach(e=>{
+    if(!e||!e.id) return;
+    const existing=map.get(e.id);
+    if(!existing||(e.createdAt&&existing.createdAt&&e.createdAt>existing.createdAt)){
+      map.set(e.id,e);
+    }
+  });
+  const result=[...map.values()];
+  result.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
+  return result;
+}
+// StatusRanges: deduplicate by from+to+status key
+function dedupStatusRanges(arr){
+  const map=new Map();
+  arr.forEach(sr=>{
+    if(!sr||!sr.from||!sr.to||!sr.status) return;
+    const key=sr.from+'|'+sr.to+'|'+sr.status;
+    map.set(key,sr);
+  });
+  const result=[...map.values()];
+  result.sort((a,b)=>a.from.localeCompare(b.from));
+  return result;
+}
+
 // ══ STATE ═════════════════════════════════════════════════════
 let username = localStorage.getItem('daily_user') || '';
 let entries = [];
@@ -689,9 +777,10 @@ let statusRanges = []; // [{from:'2025-01-01',to:'2025-01-05',status:'together'}
 let vY = new Date().getFullYear(), vM = new Date().getMonth();
 let selDay = null, selMood = MOODS[0], curTab = 'calendar';
 let curMoodCat = '常用';
-let fbApp = null, fbDb = null, fbRef = null, fbStatusRef = null, fbListener = null, fbStatusListener = null;
+let fbApp = null, fbDb = null, fbRef = null, fbStatusRef = null, fbUsersRef = null, fbListener = null, fbStatusListener = null;
 let pendingImgs = [];
 let pickedStatus = 'together';
+let authMode = 'login'; // 'login' or 'register'
 
 // ══ IMAGE COMPRESSION ═════════════════════════════════════════
 function compressImage(file) {
@@ -783,6 +872,7 @@ function initFirebase(config) {
     fbDb = firebase.database(fbApp);
     fbRef = fbDb.ref('daily_entries');
     fbStatusRef = fbDb.ref('daily_status_ranges');
+    fbUsersRef = fbDb.ref('daily_users');
     setSyncStatus('syncing', '连接中…');
 
     if (fbListener) fbRef.off('value', fbListener);
@@ -791,10 +881,11 @@ function initFirebase(config) {
       if (data) {
         const remote = typeof data === 'object' && !Array.isArray(data)
           ? Object.values(data) : (Array.isArray(data) ? data : []);
-        entries = remote.filter(e => e && e.id && e.date);
-        entries.sort((a,b) => (b.date+b.time).localeCompare(a.date+a.time));
+        entries = dedupEntries(remote.filter(e => e && e.id && e.date));
         saveLocal();
-      } else { entries = []; }
+      } else if (entries.length) {
+        writeToFirebase(entries);
+      }
       renderAll();
       setSyncStatus('online', '已同步');
     }, err => {
@@ -811,9 +902,11 @@ function initFirebase(config) {
       if (data) {
         statusRanges = typeof data === 'object' && !Array.isArray(data)
           ? Object.values(data) : (Array.isArray(data) ? data : []);
-        statusRanges = statusRanges.filter(s => s && s.from && s.to && s.status);
+        statusRanges = dedupStatusRanges(statusRanges.filter(s => s && s.from && s.to && s.status));
         saveLocalStatus();
-      } else { statusRanges = []; }
+      } else if (statusRanges.length) {
+        writeStatusToFirebase();
+      }
       renderAll();
     }, err => { console.error(err); loadLocalStatus(); });
   } catch(e) { console.error(e); setSyncStatus('offline', '离线'); }
@@ -822,8 +915,9 @@ function initFirebase(config) {
 function writeToFirebase(list) {
   if (!fbRef) return;
   setSyncStatus('syncing', '同步中…');
+  const deduped = dedupEntries(list);
   const obj = {};
-  list.forEach(e => { obj[e.id] = e; });
+  deduped.forEach(e => { obj[e.id] = e; });
   fbRef.set(obj)
     .then(() => setSyncStatus('online', '已同步'))
     .catch(err => { console.error(err); toast('⚠️ 同步失败'); setSyncStatus('offline','同步失败'); });
@@ -831,8 +925,9 @@ function writeToFirebase(list) {
 
 function writeStatusToFirebase() {
   if (!fbStatusRef) return;
+  const deduped = dedupStatusRanges(statusRanges);
   const obj = {};
-  statusRanges.forEach((s, i) => { obj['sr_'+i] = s; });
+  deduped.forEach((s, i) => { obj['sr_'+i] = s; });
   fbStatusRef.set(obj).catch(err => console.error(err));
 }
 
@@ -843,13 +938,13 @@ function deleteFromFirebase(id) {
 
 // ══ LOCAL STORAGE ═════════════════════════════════════════════
 function loadLocal() {
-  try { const r = localStorage.getItem('daily_entries'); entries = r ? JSON.parse(r) : []; } catch { entries = []; }
+  try { const r = localStorage.getItem('daily_entries'); entries = r ? dedupEntries(JSON.parse(r)) : []; } catch { entries = []; }
 }
 function saveLocal() {
   try { localStorage.setItem('daily_entries', JSON.stringify(entries)); } catch{}
 }
 function loadLocalStatus() {
-  try { const r = localStorage.getItem('daily_status_ranges'); statusRanges = r ? JSON.parse(r) : []; } catch { statusRanges = []; }
+  try { const r = localStorage.getItem('daily_status_ranges'); statusRanges = r ? dedupStatusRanges(JSON.parse(r)) : []; } catch { statusRanges = []; }
 }
 function saveLocalStatus() {
   try { localStorage.setItem('daily_status_ranges', JSON.stringify(statusRanges)); } catch{}
@@ -859,19 +954,267 @@ function setSyncStatus(state, label) {
   document.getElementById('syncLabel').textContent = label;
 }
 
-// ══ AUTH ══════════════════════════════════════════════════════
-function doLogin() {
+// ══ AUTH (PASSWORD-BASED) ═════════════════════════════════════
+
+// SHA-256 hash via Web Crypto API
+async function sha256(str){
+  const buf = new TextEncoder().encode(str);
+  const hash = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// Local credential cache for offline login
+function saveLocalCred(name, hash){
+  try{
+    const creds = JSON.parse(localStorage.getItem('daily_creds')||'{}');
+    creds[name] = hash;
+    localStorage.setItem('daily_creds', JSON.stringify(creds));
+  }catch{}
+}
+function getLocalCred(name){
+  try{
+    const creds = JSON.parse(localStorage.getItem('daily_creds')||'{}');
+    return creds[name]||null;
+  }catch{return null;}
+}
+
+// Toggle login/register mode
+function toggleAuthMode(){
+  authMode = authMode==='login' ? 'register' : 'login';
+  const isReg = authMode==='register';
+  document.getElementById('loginConfirmWrap').style.display = isReg?'block':'none';
+  document.getElementById('loginBtn').textContent = isReg?'注册并开始 →':'登录 →';
+  document.getElementById('loginToggleText').textContent = isReg?'已有账号？':'还没有账号？';
+  document.getElementById('loginToggleBtn').textContent = isReg?'登录':'注册';
+  hideLoginError();
+}
+function showLoginError(msg){
+  const el=document.getElementById('loginError');
+  el.textContent=msg; el.style.display='block';
+}
+function hideLoginError(){
+  document.getElementById('loginError').style.display='none';
+}
+
+// Main auth handler
+async function doAuth(){
   const name = document.getElementById('loginInput').value.trim();
-  if (!name) return;
-  username = name; localStorage.setItem('daily_user', name);
+  const pwd = document.getElementById('loginPassword').value;
+  if(!name){showLoginError('请输入昵称');return;}
+  if(!pwd||pwd.length<4){showLoginError('密码至少4位');return;}
+  hideLoginError();
+
+  const hash = await sha256(name + ':daily:' + pwd);
+
+  if(authMode==='register'){
+    // Register
+    const confirm = document.getElementById('loginPasswordConfirm').value;
+    if(pwd!==confirm){showLoginError('两次密码不一致');return;}
+    await doRegister(name, hash);
+  } else {
+    // Login
+    await doLoginWithPwd(name, hash);
+  }
+}
+
+async function doRegister(name, hash){
+  // Need Firebase to check if user exists
+  try{
+    if(!fbDb) initFirebaseLight();
+    const snap = await fbUsersRef.child(name).once('value');
+    if(snap.val()){
+      showLoginError('该昵称已被注册，请直接登录');
+      return;
+    }
+    // Save credentials to Firebase
+    await fbUsersRef.child(name).set({pwdHash:hash, createdAt:new Date().toISOString()});
+    saveLocalCred(name, hash);
+    enterApp(name);
+    toast('🎉 注册成功');
+  }catch(e){
+    console.error(e);
+    showLoginError('网络错误，注册需要联网');
+  }
+}
+
+async function doLoginWithPwd(name, hash){
+  // 1) Try local credential cache first (supports offline)
+  const localHash = getLocalCred(name);
+  if(localHash){
+    if(localHash===hash){
+      enterApp(name);
+      // Also try Firebase sync in background
+      try{ if(!fbDb) initFirebaseLight(); }catch{}
+      return;
+    }
+    // Local hash mismatch — maybe changed password, try Firebase
+  }
+
+  // 2) Try Firebase
+  try{
+    if(!fbDb) initFirebaseLight();
+    const snap = await fbUsersRef.child(name).once('value');
+    const userData = snap.val();
+    if(!userData){
+      // User not found — maybe old user without password
+      showLoginError('用户不存在，请先注册');
+      return;
+    }
+    if(!userData.pwdHash){
+      // Old user migrating: no password set yet
+      // Verify identity by name, then prompt to set password
+      pendingMigrateName = name;
+      pendingMigrateHash = null;
+      openM('modalSetPwd');
+      return;
+    }
+    if(userData.pwdHash!==hash){
+      showLoginError('密码错误');
+      return;
+    }
+    // Success
+    saveLocalCred(name, hash);
+    enterApp(name);
+  }catch(e){
+    console.error(e);
+    // Offline and no local cache
+    if(!localHash){
+      showLoginError('首次登录需要联网验证');
+    } else {
+      showLoginError('密码错误（离线模式）');
+    }
+  }
+}
+
+// Lightweight Firebase init (just for auth, before full init)
+function initFirebaseLight(){
+  if(fbApp) return;
+  fbApp = firebase.initializeApp(FIREBASE_CONFIG, 'daily-' + Date.now());
+  fbDb = firebase.database(fbApp);
+  fbRef = fbDb.ref('daily_entries');
+  fbStatusRef = fbDb.ref('daily_status_ranges');
+  fbUsersRef = fbDb.ref('daily_users');
+}
+
+function enterApp(name){
+  username = name;
+  localStorage.setItem('daily_user', name);
   hide('screen-login'); show('screen-app');
   loadLocal();
   loadLocalStatus();
   initApp();
   renderAll();
   initFirebase(FIREBASE_CONFIG);
+  // Check if this user has a password set (for migration)
+  checkMigration(name);
 }
-document.getElementById('loginInput').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+// Migration: old users who logged in before passwords existed
+let pendingMigrateName = '';
+async function checkMigration(name){
+  try{
+    if(!fbUsersRef) return;
+    const snap = await fbUsersRef.child(name).once('value');
+    const userData = snap.val();
+    if(!userData){
+      // Old user with data but no user record — prompt to set password
+      pendingMigrateName = name;
+      openM('modalSetPwd');
+    } else if(!userData.pwdHash){
+      pendingMigrateName = name;
+      openM('modalSetPwd');
+    }
+  }catch(e){ console.error('Migration check failed:', e); }
+}
+
+async function doMigrateSetPwd(){
+  const pwd = document.getElementById('migratePwd').value;
+  const confirm = document.getElementById('migratePwdConfirm').value;
+  const errEl = document.getElementById('migrateError');
+  errEl.style.display='none';
+  if(!pwd||pwd.length<4){errEl.textContent='密码至少4位';errEl.style.display='block';return;}
+  if(pwd!==confirm){errEl.textContent='两次密码不一致';errEl.style.display='block';return;}
+
+  const name = pendingMigrateName || username;
+  const hash = await sha256(name + ':daily:' + pwd);
+  try{
+    await fbUsersRef.child(name).set({pwdHash:hash, createdAt:new Date().toISOString()});
+    saveLocalCred(name, hash);
+    closeM('modalSetPwd');
+    toast('🔒 密码设置成功');
+    // If called from login flow, enter app
+    if(!username){
+      enterApp(name);
+    }
+  }catch(e){
+    console.error(e);
+    errEl.textContent='保存失败，请检查网络';errEl.style.display='block';
+  }
+}
+
+// Change password
+function openChangePwd(){
+  document.getElementById('changePwdOld').value='';
+  document.getElementById('changePwdNew').value='';
+  document.getElementById('changePwdConfirm').value='';
+  document.getElementById('changePwdError').style.display='none';
+  openM('modalChangePwd');
+}
+async function doChangePwd(){
+  const oldPwd = document.getElementById('changePwdOld').value;
+  const newPwd = document.getElementById('changePwdNew').value;
+  const confirm = document.getElementById('changePwdConfirm').value;
+  const errEl = document.getElementById('changePwdError');
+  errEl.style.display='none';
+
+  if(!oldPwd){errEl.textContent='请输入当前密码';errEl.style.display='block';return;}
+  if(!newPwd||newPwd.length<4){errEl.textContent='新密码至少4位';errEl.style.display='block';return;}
+  if(newPwd!==confirm){errEl.textContent='两次新密码不一致';errEl.style.display='block';return;}
+
+  const oldHash = await sha256(username + ':daily:' + oldPwd);
+  // Verify old password
+  try{
+    const snap = await fbUsersRef.child(username).once('value');
+    const userData = snap.val();
+    if(!userData||userData.pwdHash!==oldHash){
+      // Also check local
+      const localHash = getLocalCred(username);
+      if(!localHash||localHash!==oldHash){
+        errEl.textContent='当前密码错误';errEl.style.display='block';return;
+      }
+    }
+  }catch(e){
+    // Offline: check local
+    const localHash = getLocalCred(username);
+    if(!localHash||localHash!==oldHash){
+      errEl.textContent='当前密码错误';errEl.style.display='block';return;
+    }
+  }
+
+  const newHash = await sha256(username + ':daily:' + newPwd);
+  try{
+    await fbUsersRef.child(username).update({pwdHash:newHash});
+    saveLocalCred(username, newHash);
+    closeM('modalChangePwd');
+    toast('🔒 密码已修改');
+  }catch(e){
+    // Save locally even if Firebase fails
+    saveLocalCred(username, newHash);
+    closeM('modalChangePwd');
+    toast('🔒 密码已本地更新（待联网同步）');
+  }
+}
+
+// Keyboard enter on login fields
+document.getElementById('loginInput').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('loginPassword').focus(); });
+document.getElementById('loginPassword').addEventListener('keydown', e => {
+  if(e.key==='Enter'){
+    if(authMode==='register') document.getElementById('loginPasswordConfirm').focus();
+    else doAuth();
+  }
+});
+document.getElementById('loginPasswordConfirm').addEventListener('keydown', e => { if(e.key==='Enter') doAuth(); });
+
 function doLogout() {
   username = ''; localStorage.removeItem('daily_user');
   if (fbListener && fbRef) fbRef.off('value', fbListener);
@@ -879,8 +1222,14 @@ function doLogout() {
   fbListener = null; fbStatusListener = null;
   hide('screen-app'); show('screen-login');
   document.getElementById('loginInput').value = '';
+  document.getElementById('loginPassword').value = '';
+  // Reset to login mode
+  authMode = 'register'; // set opposite so toggleAuthMode flips to 'login'
+  toggleAuthMode();
+  hideLoginError();
   showTab('calendar');
 }
+
 function initApp() {
   document.getElementById('topName').textContent = username;
   document.getElementById('topDot').style.background = uc(username);
@@ -1232,8 +1581,8 @@ function exportJSON(){
     version:2,
     exportedAt:new Date().toISOString(),
     username,
-    entries,
-    statusRanges
+    entries:dedupEntries(entries),
+    statusRanges:dedupStatusRanges(statusRanges)
   };
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
@@ -1255,29 +1604,23 @@ function handleImportFile(files){
     try{
       const data=JSON.parse(e.target.result);
       if(data.entries&&Array.isArray(data.entries)){
-        // Merge entries
-        const ids=new Set(entries.map(e=>e.id));
-        let added=0;
-        data.entries.forEach(ne=>{
-          if(ne&&ne.id&&!ids.has(ne.id)){entries.push(ne);ids.add(ne.id);added++;}
-        });
-        entries.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
+        const beforeCount=entries.length;
+        // Merge and dedup entries by id
+        const merged=[...entries,...data.entries.filter(ne=>ne&&ne.id&&ne.date)];
+        entries=dedupEntries(merged);
+        const added=entries.length-beforeCount;
         saveLocal();
         writeToFirebase(entries);
-        // Merge status ranges
+        // Merge and dedup status ranges
         if(data.statusRanges&&Array.isArray(data.statusRanges)){
-          data.statusRanges.forEach(sr=>{
-            if(!statusRanges.some(e=>e.from===sr.from&&e.to===sr.to)){
-              statusRanges.push(sr);
-            }
-          });
-          statusRanges.sort((a,b)=>a.from.localeCompare(b.from));
+          const mergedSR=[...statusRanges,...data.statusRanges.filter(s=>s&&s.from&&s.to&&s.status)];
+          statusRanges=dedupStatusRanges(mergedSR);
           saveLocalStatus();
           writeStatusToFirebase();
         }
         renderAll();
         triggerAutoGistBackup();
-        toast(`📂 已导入 ${added} 条新记录`);
+        toast(`📂 已导入 ${Math.max(0,added)} 条新记录`);
       } else { toast('⚠️ 无效的备份文件'); }
     }catch{toast('⚠️ 文件解析失败');}
   };
@@ -1296,8 +1639,8 @@ async function backupToGist(){
     version:2,
     exportedAt:new Date().toISOString(),
     username,
-    entries,
-    statusRanges
+    entries:dedupEntries(entries),
+    statusRanges:dedupStatusRanges(statusRanges)
   };
   const payload={
     description:'daily app backup — '+new Date().toLocaleString('zh-CN'),
@@ -1350,13 +1693,12 @@ async function restoreFromGist(){
     if(!file){toast('⚠️ Gist 中无备份文件');return;}
     const data=JSON.parse(file.content);
     if(data.entries&&Array.isArray(data.entries)){
-      entries=data.entries.filter(e=>e&&e.id&&e.date);
-      entries.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
+      entries=dedupEntries(data.entries.filter(e=>e&&e.id&&e.date));
       saveLocal();
       writeToFirebase(entries);
     }
     if(data.statusRanges&&Array.isArray(data.statusRanges)){
-      statusRanges=data.statusRanges.filter(s=>s&&s.from&&s.to&&s.status);
+      statusRanges=dedupStatusRanges(data.statusRanges.filter(s=>s&&s.from&&s.to&&s.status));
       saveLocalStatus();
       writeStatusToFirebase();
     }
@@ -1409,6 +1751,8 @@ if(username){
   renderAll();
   // 2) Then try connecting to Firebase to sync (overlay remote data when ready)
   initFirebase(FIREBASE_CONFIG);
+  // 3) Check if old user needs to set password
+  setTimeout(()=>checkMigration(username), 2000);
 } else {
   setTimeout(()=>document.getElementById('loginInput').focus(), 300);
 }
