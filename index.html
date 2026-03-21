@@ -491,8 +491,8 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
 
           <div class="auto-save-row">
             <div>
-              <div class="auto-save-label">定时自动备份</div>
-              <div class="auto-save-time" id="autoBackupTime">每 30 分钟</div>
+              <div class="auto-save-label">写入时自动备份</div>
+              <div class="auto-save-time" id="autoBackupTime">每次操作后 5 秒防抖上传</div>
             </div>
             <label class="toggle-wrap">
               <input type="checkbox" id="autoBackupToggle" onchange="toggleAutoBackup()"/>
@@ -692,7 +692,6 @@ let curMoodCat = '常用';
 let fbApp = null, fbDb = null, fbRef = null, fbStatusRef = null, fbListener = null, fbStatusListener = null;
 let pendingImgs = [];
 let pickedStatus = 'together';
-let autoBackupTimer = null;
 
 // ══ IMAGE COMPRESSION ═════════════════════════════════════════
 function compressImage(file) {
@@ -866,8 +865,11 @@ function doLogin() {
   if (!name) return;
   username = name; localStorage.setItem('daily_user', name);
   hide('screen-login'); show('screen-app');
-  initFirebase(FIREBASE_CONFIG);
+  loadLocal();
+  loadLocalStatus();
   initApp();
+  renderAll();
+  initFirebase(FIREBASE_CONFIG);
 }
 document.getElementById('loginInput').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 function doLogout() {
@@ -885,7 +887,6 @@ function initApp() {
   buildMoodTabs();
   buildMoodGrid();
   document.getElementById('entryTime').value = nowTime();
-  loadLocalStatus();
   // Load GitHub settings
   const gt = localStorage.getItem('daily_gist_token');
   const gi = localStorage.getItem('daily_gist_id');
@@ -893,7 +894,6 @@ function initApp() {
   if (gi) document.getElementById('gistIdInput').value = gi;
   const ab = localStorage.getItem('daily_auto_backup') === 'true';
   document.getElementById('autoBackupToggle').checked = ab;
-  if (ab) startAutoBackup();
 }
 
 // ══ RENDER ════════════════════════════════════════════════════
@@ -1099,6 +1099,7 @@ function saveEntry(){
   entries.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
   saveLocal();
   writeToFirebase(entries);
+  triggerAutoGistBackup();
   closeAdd(); renderAll();
   toast('✨ 已保存' + (e.images ? ` · ${e.images.length}张图片` : ''));
 }
@@ -1125,7 +1126,7 @@ function openView(e){
     const d=document.createElement('button'); d.className='btn-danger'; d.textContent='删除';
     d.onclick=()=>{
       entries=entries.filter(x=>x.id!==e.id);
-      saveLocal(); deleteFromFirebase(e.id);
+      saveLocal(); deleteFromFirebase(e.id); triggerAutoGistBackup();
       closeM('modalView'); renderAll(); toast('已删除');
     };
     act.appendChild(d);
@@ -1171,12 +1172,12 @@ function saveStatus(){
   const to=document.getElementById('statusTo').value;
   if(!from||!to){toast('请选择日期范围');return;}
   if(from>to){toast('开始日期不能晚于结束日期');return;}
-  // Remove overlapping ranges
   statusRanges=statusRanges.filter(sr=>sr.to<from||sr.from>to);
   statusRanges.push({from,to,status:pickedStatus});
   statusRanges.sort((a,b)=>a.from.localeCompare(b.from));
   saveLocalStatus();
   writeStatusToFirebase();
+  triggerAutoGistBackup();
   renderAll();
   renderStatusList();
   toast(pickedStatus==='together'?'🩷 已标记在一起':'💙 已标记异地');
@@ -1189,6 +1190,7 @@ function clearStatusRange(){
   statusRanges=statusRanges.filter(sr=>sr.to<from||sr.from>to);
   saveLocalStatus();
   writeStatusToFirebase();
+  triggerAutoGistBackup();
   renderAll();
   renderStatusList();
   toast('已清除状态');
@@ -1198,6 +1200,7 @@ function deleteStatusIdx(idx){
   statusRanges.splice(idx,1);
   saveLocalStatus();
   writeStatusToFirebase();
+  triggerAutoGistBackup();
   renderAll();
   renderStatusList();
   toast('已删除');
@@ -1273,6 +1276,7 @@ function handleImportFile(files){
           writeStatusToFirebase();
         }
         renderAll();
+        triggerAutoGistBackup();
         toast(`📂 已导入 ${added} 条新记录`);
       } else { toast('⚠️ 无效的备份文件'); }
     }catch{toast('⚠️ 文件解析失败');}
@@ -1364,23 +1368,23 @@ async function restoreFromGist(){
   }
 }
 
-// Auto backup
+// Auto backup — debounced, triggered on every data write
+let _gistDebounceTimer=null;
+function triggerAutoGistBackup(){
+  if(localStorage.getItem('daily_auto_backup')!=='true') return;
+  const token=localStorage.getItem('daily_gist_token');
+  const gistId=localStorage.getItem('daily_gist_id');
+  if(!token||!gistId) return;
+  clearTimeout(_gistDebounceTimer);
+  _gistDebounceTimer=setTimeout(()=>{
+    backupToGist();
+  },5000); // 5s debounce
+}
 function toggleAutoBackup(){
   const on=document.getElementById('autoBackupToggle').checked;
   localStorage.setItem('daily_auto_backup',on?'true':'false');
-  if(on){startAutoBackup();toast('⏰ 已开启自动备份');}
-  else{stopAutoBackup();toast('已关闭自动备份');}
-}
-function startAutoBackup(){
-  stopAutoBackup();
-  autoBackupTimer=setInterval(()=>{
-    const token=localStorage.getItem('daily_gist_token');
-    const gistId=localStorage.getItem('daily_gist_id');
-    if(token&&gistId) backupToGist();
-  },30*60*1000); // 30 min
-}
-function stopAutoBackup(){
-  if(autoBackupTimer){clearInterval(autoBackupTimer);autoBackupTimer=null;}
+  if(on){toast('✅ 已开启写入自动备份');}
+  else{clearTimeout(_gistDebounceTimer);toast('已关闭自动备份');}
 }
 
 // ══ MODAL HELPERS ═════════════════════════════════════════════
@@ -1395,10 +1399,16 @@ function toast(msg){
   clearTimeout(tT); tT=setTimeout(()=>el.classList.add('hidden'),2600);
 }
 
-// ══ AUTO START ════════════════════════════════════════════════
+// ══ AUTO START (OFFLINE-FIRST) ═══════════════════════════════
 if(username){
   hide('screen-login'); show('screen-app');
-  initFirebase(FIREBASE_CONFIG); initApp();
+  // 1) Load local data FIRST — instant, no network needed
+  loadLocal();
+  loadLocalStatus();
+  initApp();
+  renderAll();
+  // 2) Then try connecting to Firebase to sync (overlay remote data when ready)
+  initFirebase(FIREBASE_CONFIG);
 } else {
   setTimeout(()=>document.getElementById('loginInput').focus(), 300);
 }
