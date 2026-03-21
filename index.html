@@ -1027,14 +1027,36 @@ function initFirebase(config) {
       }).catch(()=>{});
     }
 
+    // ── Write lock: prevents listener from overwriting during active writes ──
+    let _syncLock = false;
+    let _syncLockTimer = null;
+    function lockSync(){
+      _syncLock = true;
+      clearTimeout(_syncLockTimer);
+      _syncLockTimer = setTimeout(()=>{ _syncLock = false; }, 2000);
+    }
+    function unlockSync(){
+      clearTimeout(_syncLockTimer);
+      _syncLockTimer = setTimeout(()=>{ _syncLock = false; }, 800);
+    }
+
     fbListener = fbRef.on('value', snapshot => {
+      if(_syncLock){ setSyncStatus('online','已同步'); return; } // Skip during writes
       const data = snapshot.val();
       if (data) {
         const remote = typeof data === 'object' && !Array.isArray(data)
           ? Object.values(data) : (Array.isArray(data) ? data : []);
-        entries = dedupEntries(remote.filter(e => e && e.id && e.date));
+        const remoteClean = remote.filter(e => e && e.id && e.date);
+        // MERGE instead of replace — union of local + remote, deduplicated by id
+        const merged = dedupEntries([...entries, ...remoteClean]);
+        entries = merged;
         saveLocal();
+        // If local had entries that remote didn't, push them back
+        if(merged.length > remoteClean.length){
+          writeToFirebase(entries);
+        }
       } else if (entries.length) {
+        // Remote is empty, push local up
         writeToFirebase(entries);
       }
       renderAll();
@@ -1046,44 +1068,65 @@ function initFirebase(config) {
       loadLocal(); renderAll();
     });
 
-    // Status ranges listener
+    // Status ranges listener — same merge strategy
     fbStatusListener = fbStatusRef.on('value', snapshot => {
+      if(_syncLock){ return; }
       const data = snapshot.val();
       if (data) {
-        statusRanges = typeof data === 'object' && !Array.isArray(data)
+        const remote = typeof data === 'object' && !Array.isArray(data)
           ? Object.values(data) : (Array.isArray(data) ? data : []);
-        statusRanges = dedupStatusRanges(statusRanges.filter(s => s && s.from && s.to && s.status));
+        const remoteClean = remote.filter(s => s && s.from && s.to && s.status);
+        const merged = dedupStatusRanges([...statusRanges, ...remoteClean]);
+        statusRanges = merged;
         saveLocalStatus();
+        if(merged.length > remoteClean.length){
+          writeStatusToFirebase();
+        }
       } else if (statusRanges.length) {
         writeStatusToFirebase();
       }
       renderAll();
     }, err => { console.error(err); loadLocalStatus(); });
+
+    // ── Expose lock functions for write operations ──
+    window._lockSync = lockSync;
+    window._unlockSync = unlockSync;
   } catch(e) { console.error(e); setSyncStatus('offline', '离线'); }
 }
 
 function writeToFirebase(list) {
   if (!fbRef) return;
+  if(window._lockSync) window._lockSync();
   setSyncStatus('syncing', '同步中…');
   const deduped = dedupEntries(list);
   const obj = {};
   deduped.forEach(e => { obj[e.id] = e; });
   fbRef.set(obj)
-    .then(() => setSyncStatus('online', '已同步'))
-    .catch(err => { console.error(err); toast('⚠️ 同步失败'); setSyncStatus('offline','同步失败'); });
+    .then(() => { if(window._unlockSync) window._unlockSync(); setSyncStatus('online', '已同步'); })
+    .catch(err => { if(window._unlockSync) window._unlockSync(); console.error(err); toast('⚠️ 同步失败'); setSyncStatus('offline','同步失败'); });
 }
 
 function writeStatusToFirebase() {
   if (!fbStatusRef) return;
+  if(window._lockSync) window._lockSync();
   const deduped = dedupStatusRanges(statusRanges);
   const obj = {};
   deduped.forEach((s, i) => { obj['sr_'+i] = s; });
-  fbStatusRef.set(obj).catch(err => console.error(err));
+  fbStatusRef.set(obj)
+    .then(()=>{ if(window._unlockSync) window._unlockSync(); })
+    .catch(err => { if(window._unlockSync) window._unlockSync(); console.error(err); });
 }
 
 function deleteFromFirebase(id) {
   if (!fbRef) return;
-  fbRef.child(id).remove().catch(err => console.error(err));
+  // Use full set() instead of child.remove() to prevent merge from resurrecting the entry
+  if(window._lockSync) window._lockSync();
+  const deduped = dedupEntries(entries);
+  const obj = {};
+  deduped.forEach(e => { obj[e.id] = e; });
+  fbRef.set(obj)
+    .then(()=>{ if(window._unlockSync) window._unlockSync(); })
+    .catch(err => { if(window._unlockSync) window._unlockSync(); console.error(err); });
 }
 
 // ══ LOCAL STORAGE ═════════════════════════════════════════════
