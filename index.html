@@ -1004,9 +1004,9 @@ function initFirebase(config) {
     if(coupleId){
       fbRef = fbDb.ref('daily_rooms/'+coupleId+'/entries');
       fbStatusRef = fbDb.ref('daily_rooms/'+coupleId+'/status_ranges');
-    } else {
-      fbRef = fbDb.ref('daily_entries');
-      fbStatusRef = fbDb.ref('daily_status_ranges');
+    } else if(username){
+      fbRef = fbDb.ref('daily_private/'+username+'/entries');
+      fbStatusRef = fbDb.ref('daily_private/'+username+'/status_ranges');
     }
     setSyncStatus('syncing', '连接中…');
 
@@ -1243,9 +1243,9 @@ function initFirebaseLight(){
   if(coupleId){
     fbRef = fbDb.ref('daily_rooms/'+coupleId+'/entries');
     fbStatusRef = fbDb.ref('daily_rooms/'+coupleId+'/status_ranges');
-  } else {
-    fbRef = fbDb.ref('daily_entries');
-    fbStatusRef = fbDb.ref('daily_status_ranges');
+  } else if(username){
+    fbRef = fbDb.ref('daily_private/'+username+'/entries');
+    fbStatusRef = fbDb.ref('daily_private/'+username+'/status_ranges');
   }
 }
 
@@ -1973,11 +1973,31 @@ async function migrateDataToCoupleRoom(cId, otherUser){
   const roomEntriesRef=fbDb.ref('daily_rooms/'+cId+'/entries');
   const roomStatusRef=fbDb.ref('daily_rooms/'+cId+'/status_ranges');
 
-  // Collect existing entries from global store
+  // Collect my local entries
   const mergedEntries={};
-  // My local entries
   entries.forEach(e=>{mergedEntries[e.id]=e;});
-  // Also try to read from global store (might have partner's data)
+
+  // Read partner's private entries
+  try{
+    const partnerSnap=await fbDb.ref('daily_private/'+otherUser+'/entries').once('value');
+    const pData=partnerSnap.val();
+    if(pData){
+      const pList=typeof pData==='object'&&!Array.isArray(pData)?Object.values(pData):(Array.isArray(pData)?pData:[]);
+      pList.filter(e=>e&&e.id&&e.date).forEach(e=>{mergedEntries[e.id]=e;});
+    }
+  }catch{}
+
+  // Also read my own private entries (in case local is stale)
+  try{
+    const mySnap=await fbDb.ref('daily_private/'+username+'/entries').once('value');
+    const mData=mySnap.val();
+    if(mData){
+      const mList=typeof mData==='object'&&!Array.isArray(mData)?Object.values(mData):(Array.isArray(mData)?mData:[]);
+      mList.filter(e=>e&&e.id&&e.date).forEach(e=>{mergedEntries[e.id]=e;});
+    }
+  }catch{}
+
+  // Also try legacy global store for old data
   try{
     const globalSnap=await fbDb.ref('daily_entries').once('value');
     const gData=globalSnap.val();
@@ -1988,12 +2008,24 @@ async function migrateDataToCoupleRoom(cId, otherUser){
     }
   }catch{}
 
-  // Write merged entries
+  // Write merged entries to couple room
   await roomEntriesRef.set(mergedEntries).catch(()=>{});
 
   // Merge status ranges
   const mergedStatus={};
   statusRanges.forEach((s,i)=>{mergedStatus['sr_'+i]=s;});
+  // Read partner's status ranges
+  try{
+    const partnerStatusSnap=await fbDb.ref('daily_private/'+otherUser+'/status_ranges').once('value');
+    const psData=partnerStatusSnap.val();
+    if(psData){
+      const psList=typeof psData==='object'&&!Array.isArray(psData)?Object.values(psData):(Array.isArray(psData)?psData:[]);
+      psList.filter(s=>s&&s.from&&s.to&&s.status).forEach((s,i)=>{
+        mergedStatus['sr_p'+i]=s;
+      });
+    }
+  }catch{}
+  // Also try legacy global status
   try{
     const globalStatusSnap=await fbDb.ref('daily_status_ranges').once('value');
     const sData=globalStatusSnap.val();
