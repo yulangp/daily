@@ -405,8 +405,12 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
     <div class="brand">daily</div>
     <div class="sub">record every mood · every moment</div>
     <div class="form-box">
-      <label class="flabel">你的昵称</label>
-      <input class="ifield" id="loginInput" placeholder="输入昵称…" maxlength="20" autocomplete="off" inputmode="text"/>
+      <label class="flabel">账号</label>
+      <input class="ifield" id="loginInput" placeholder="输入账号…" maxlength="20" autocomplete="off" inputmode="text"/>
+      <div id="loginNickWrap" style="display:none">
+        <label class="flabel">昵称（显示名称）</label>
+        <input class="ifield" id="loginNickname" placeholder="输入你的昵称…" maxlength="20" autocomplete="off" inputmode="text"/>
+      </div>
       <label class="flabel">密码</label>
       <input class="ifield" id="loginPassword" type="password" placeholder="输入密码…" maxlength="40" autocomplete="off"/>
       <div id="loginConfirmWrap" style="display:none">
@@ -547,6 +551,10 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
         <div class="profile-avatar" id="profileAvatar"></div>
         <div class="profile-name" id="profileName"></div>
         <div class="profile-sub" id="profileSub">daily 共享日历成员</div>
+        <div style="text-align:center;font-size:.68rem;color:var(--light);margin-bottom:14px;">
+          账号: <span id="profileAccount" style="color:var(--mid);font-weight:600;"></span>
+          <button onclick="openEditNick()" style="background:none;border:none;color:var(--terra);font-size:.68rem;cursor:pointer;text-decoration:underline;font-family:var(--sans);margin-left:6px;">修改昵称</button>
+        </div>
         <div class="stat-row">
           <div class="stat-box"><div class="stat-num" id="statTotal">0</div><div class="stat-lbl">总记录</div></div>
           <div class="stat-box"><div class="stat-num" id="statMine">0</div><div class="stat-lbl">我的</div></div>
@@ -712,6 +720,23 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
 </div>
 
 <!-- CHANGE PASSWORD MODAL -->
+<div class="modal-bg hidden" id="modalEditNick">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">修改昵称</div>
+    <div class="form-block">
+      <label class="form-label">新昵称</label>
+      <input class="input-field" id="editNickInput" placeholder="输入新昵称" maxlength="20"/>
+    </div>
+    <div id="editNickError" style="font-size:.76rem;color:var(--red);margin-bottom:8px;display:none"></div>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="closeM('modalEditNick')">取消</button>
+      <button class="btn-primary" onclick="doEditNick()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHANGE PASSWORD MODAL -->
 <div class="modal-bg hidden" id="modalChangePwd">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
@@ -866,6 +891,7 @@ function dedupStatusRanges(arr){
 
 // ══ STATE ═════════════════════════════════════════════════════
 let username = localStorage.getItem('daily_user') || '';
+let nickname = localStorage.getItem('daily_nickname') || '';
 let entries = [];
 let statusRanges = []; // [{from:'2025-01-01',to:'2025-01-05',status:'together'}]
 let vY = new Date().getFullYear(), vM = new Date().getMonth();
@@ -1107,6 +1133,7 @@ function toggleAuthMode(){
   authMode = authMode==='login' ? 'register' : 'login';
   const isReg = authMode==='register';
   document.getElementById('loginConfirmWrap').style.display = isReg?'block':'none';
+  document.getElementById('loginNickWrap').style.display = isReg?'block':'none';
   document.getElementById('loginBtn').textContent = isReg?'注册并开始 →':'登录 →';
   document.getElementById('loginToggleText').textContent = isReg?'已有账号？':'还没有账号？';
   document.getElementById('loginToggleBtn').textContent = isReg?'登录':'注册';
@@ -1122,71 +1149,70 @@ function hideLoginError(){
 
 // Main auth handler
 async function doAuth(){
-  const name = document.getElementById('loginInput').value.trim();
+  const acct = document.getElementById('loginInput').value.trim();
   const pwd = document.getElementById('loginPassword').value;
-  if(!name){showLoginError('请输入昵称');return;}
+  if(!acct){showLoginError('请输入账号');return;}
   if(!pwd||pwd.length<4){showLoginError('密码至少4位');return;}
   hideLoginError();
 
-  const hash = await sha256(name + ':daily:' + pwd);
+  const hash = await sha256(acct + ':daily:' + pwd);
 
   if(authMode==='register'){
-    // Register
+    const nick = (document.getElementById('loginNickname').value||'').trim();
+    if(!nick){showLoginError('请输入昵称');return;}
     const confirm = document.getElementById('loginPasswordConfirm').value;
     if(pwd!==confirm){showLoginError('两次密码不一致');return;}
-    await doRegister(name, hash);
+    await doRegister(acct, nick, hash);
   } else {
-    // Login
-    await doLoginWithPwd(name, hash);
+    await doLoginWithPwd(acct, hash);
   }
 }
 
-async function doRegister(name, hash){
-  // Need Firebase to check if user exists
+async function doRegister(acct, nick, hash){
   try{
     if(!fbDb) initFirebaseLight();
-    const snap = await fbUsersRef.child(name).once('value');
+    const snap = await fbUsersRef.child(acct).once('value');
     if(snap.val() && snap.val().pwdHash){
-      showLoginError('该昵称已注册过密码，请切换到「登录」');
+      showLoginError('该账号已注册，请切换到「登录」');
       return;
     }
-    // Save credentials to Firebase (new user or old user migrating)
-    await fbUsersRef.child(name).set({pwdHash:hash, createdAt:new Date().toISOString()});
-    saveLocalCred(name, hash);
-    enterApp(name);
-    toast('🎉 注册成功，密码已设置');
+    await fbUsersRef.child(acct).set({pwdHash:hash, nickname:nick, createdAt:new Date().toISOString()});
+    saveLocalCred(acct, hash);
+    nickname = nick;
+    localStorage.setItem('daily_nickname', nick);
+    enterApp(acct);
+    toast('🎉 注册成功');
   }catch(e){
     console.error(e);
     showLoginError('网络错误，注册需要联网');
   }
 }
 
-async function doLoginWithPwd(name, hash){
-  // 1) Try local credential cache first (supports offline)
-  const localHash = getLocalCred(name);
-  if(localHash){
-    if(localHash===hash){
-      enterApp(name);
-      // Also try Firebase sync in background
-      try{ if(!fbDb) initFirebaseLight(); }catch{}
-      return;
-    }
-    // Local hash mismatch — maybe changed password, try Firebase
+async function doLoginWithPwd(acct, hash){
+  const localHash = getLocalCred(acct);
+  if(localHash && localHash===hash){
+    nickname = localStorage.getItem('daily_nickname') || acct;
+    enterApp(acct);
+    try{
+      if(!fbDb) initFirebaseLight();
+      fbUsersRef.child(acct).once('value').then(snap=>{
+        const u=snap.val();
+        if(u&&u.nickname){nickname=u.nickname;localStorage.setItem('daily_nickname',nickname);renderAll();}
+      });
+    }catch{}
+    return;
   }
 
-  // 2) Try Firebase
   try{
     if(!fbDb) initFirebaseLight();
-    const snap = await fbUsersRef.child(name).once('value');
+    const snap = await fbUsersRef.child(acct).once('value');
     const userData = snap.val();
     if(!userData){
-      // User not found in daily_users — old user or new user
-      showLoginError('该账号尚未设置密码，请切换到「注册」设置密码');
+      showLoginError('账号不存在，请先注册');
       return;
     }
     if(!userData.pwdHash){
-      // Old user migrating: no password set yet
-      pendingMigrateName = name;
+      pendingMigrateName = acct;
       openM('modalSetPwd');
       return;
     }
@@ -1194,12 +1220,12 @@ async function doLoginWithPwd(name, hash){
       showLoginError('密码错误');
       return;
     }
-    // Success
-    saveLocalCred(name, hash);
-    enterApp(name);
+    saveLocalCred(acct, hash);
+    nickname = userData.nickname || acct;
+    localStorage.setItem('daily_nickname', nickname);
+    enterApp(acct);
   }catch(e){
     console.error(e);
-    // Offline and no local cache
     if(!localHash){
       showLoginError('首次登录需要联网验证');
     } else {
@@ -1223,10 +1249,10 @@ function initFirebaseLight(){
   }
 }
 
-function enterApp(name){
-  username = name;
-  localStorage.setItem('daily_user', name);
-  // Restore couple info
+function enterApp(acct){
+  username = acct;
+  localStorage.setItem('daily_user', acct);
+  if(!nickname) nickname = localStorage.getItem('daily_nickname') || acct;
   coupleId = localStorage.getItem('daily_couple_id') || '';
   partnerName = localStorage.getItem('daily_partner') || '';
   hide('screen-login'); show('screen-app');
@@ -1263,16 +1289,19 @@ async function doMigrateSetPwd(){
   if(!pwd||pwd.length<4){errEl.textContent='密码至少4位';errEl.style.display='block';return;}
   if(pwd!==confirm){errEl.textContent='两次密码不一致';errEl.style.display='block';return;}
 
-  const name = pendingMigrateName || username;
-  const hash = await sha256(name + ':daily:' + pwd);
+  const acct = pendingMigrateName || username;
+  const hash = await sha256(acct + ':daily:' + pwd);
   try{
-    await fbUsersRef.child(name).set({pwdHash:hash, createdAt:new Date().toISOString()});
-    saveLocalCred(name, hash);
+    const existingNick = nickname || acct;
+    await fbUsersRef.child(acct).set({pwdHash:hash, nickname:existingNick, createdAt:new Date().toISOString()});
+    saveLocalCred(acct, hash);
+    nickname = existingNick;
+    localStorage.setItem('daily_nickname', existingNick);
     closeM('modalSetPwd');
     toast('🔒 密码设置成功');
     // If called from login flow, enter app
     if(!username){
-      enterApp(name);
+      enterApp(acct);
     }
   }catch(e){
     console.error(e);
@@ -1334,7 +1363,12 @@ async function doChangePwd(){
 }
 
 // Keyboard enter on login fields
-document.getElementById('loginInput').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('loginPassword').focus(); });
+document.getElementById('loginInput').addEventListener('keydown', e => {
+  if(e.key==='Enter'){
+    if(authMode==='register') document.getElementById('loginNickname').focus();
+    else document.getElementById('loginPassword').focus();
+  }
+});
 document.getElementById('loginPassword').addEventListener('keydown', e => {
   if(e.key==='Enter'){
     if(authMode==='register') document.getElementById('loginPasswordConfirm').focus();
@@ -1343,8 +1377,44 @@ document.getElementById('loginPassword').addEventListener('keydown', e => {
 });
 document.getElementById('loginPasswordConfirm').addEventListener('keydown', e => { if(e.key==='Enter') doAuth(); });
 
+// Edit nickname
+function openEditNick(){
+  document.getElementById('editNickInput').value=nickname||username;
+  document.getElementById('editNickError').style.display='none';
+  openM('modalEditNick');
+}
+async function doEditNick(){
+  const newNick=document.getElementById('editNickInput').value.trim();
+  const errEl=document.getElementById('editNickError');
+  errEl.style.display='none';
+  if(!newNick){errEl.textContent='昵称不能为空';errEl.style.display='block';return;}
+  const oldNick=nickname||username;
+  nickname=newNick;
+  localStorage.setItem('daily_nickname',newNick);
+  try{ if(fbUsersRef) await fbUsersRef.child(username).update({nickname:newNick}); }catch{}
+  // Update my entries' author field
+  let changed=0;
+  entries.forEach(e=>{
+    if(e.authorId===username || (!e.authorId && (e.author===oldNick||e.author===username))){
+      e.author=newNick;
+      e.authorId=username;
+      changed++;
+    }
+  });
+  if(changed){
+    saveLocal();
+    writeToFirebase(entries);
+    triggerAutoGistBackup();
+  }
+  closeM('modalEditNick');
+  initApp();
+  renderAll();
+  toast('✨ 昵称已更新为「'+newNick+'」');
+}
+
 function doLogout() {
-  username = ''; localStorage.removeItem('daily_user');
+  username = ''; nickname = '';
+  localStorage.removeItem('daily_user');
   coupleId = ''; partnerName = '';
   if (fbListener && fbRef) fbRef.off('value', fbListener);
   if (fbStatusListener && fbStatusRef) fbStatusRef.off('value', fbStatusListener);
@@ -1360,8 +1430,8 @@ function doLogout() {
 }
 
 function initApp() {
-  document.getElementById('topName').textContent = username;
-  document.getElementById('topDot').style.background = uc(username);
+  document.getElementById('topName').textContent = nickname || username;
+  document.getElementById('topDot').style.background = uc(nickname || username);
   buildMoodTabs();
   buildMoodGrid();
   document.getElementById('entryTime').value = nowTime();
@@ -1467,14 +1537,17 @@ function rFL(id,list){
 
 function renderProfile(){
   renderCoupleCard();
-  const color=uc(username);
+  const dn=nickname||username;
+  const color=uc(dn);
   const av=document.getElementById('profileAvatar');
   av.style.background=`linear-gradient(135deg,${color},${color}aa)`;
-  av.textContent=username.charAt(0).toUpperCase();
-  document.getElementById('profileName').textContent=username;
+  av.textContent=dn.charAt(0).toUpperCase();
+  document.getElementById('profileName').textContent=dn;
+  document.getElementById('profileAccount').textContent=username;
+  const pdn=localStorage.getItem('daily_partner_nick')||partnerName;
   document.getElementById('profileSub').textContent=coupleId&&partnerName?
-    `💞 与 ${partnerName} 的共享空间`:'daily 共享日历成员';
-  const mine=entries.filter(e=>e.author===username);
+    `💞 与 ${pdn} 的共享空间`:'daily 共享日历成员';
+  const mine=entries.filter(e=>e.authorId===username||e.author===dn||e.author===username);
   const days=new Set(entries.map(e=>e.date)).size;
   document.getElementById('statTotal').textContent=entries.length;
   document.getElementById('statMine').textContent=mine.length;
@@ -1572,7 +1645,8 @@ function saveEntry(){
     time: document.getElementById('entryTime').value||'00:00',
     mood: {emoji:selMood.emoji, label:selMood.label},
     note: document.getElementById('entryNote').value.trim(),
-    author: username,
+    author: nickname||username,
+    authorId: username,
     createdAt: new Date().toISOString(),
     images: pendingImgs.length ? [...pendingImgs] : null
   };
@@ -1603,7 +1677,7 @@ function openView(e){
     });
   }
   const act=document.getElementById('veActions'); act.innerHTML='';
-  if(e.author===username){
+  if(e.authorId===username||e.author===username||e.author===(nickname||username)){
     const d=document.createElement('button'); d.className='btn-danger'; d.textContent='删除';
     d.onclick=()=>{
       entries=entries.filter(x=>x.id!==e.id);
@@ -1712,21 +1786,33 @@ let inviteTimerInterval = null;
 function renderCoupleCard(){
   const linked = document.getElementById('coupleLinked');
   const notLinked = document.getElementById('coupleNotLinked');
+  const dn=nickname||username;
+  const pdn=localStorage.getItem('daily_partner_nick')||partnerName;
   if(coupleId && partnerName){
     linked.style.display='block';
     notLinked.style.display='none';
     document.getElementById('coupleTitle').textContent='💑 已绑定';
-    // Avatars
     const av1=document.getElementById('coupleAv1');
     const av2=document.getElementById('coupleAv2');
-    av1.style.background=`linear-gradient(135deg,${uc(username)},${uc(username)}aa)`;
-    av1.textContent=username.charAt(0).toUpperCase();
-    av2.style.background=`linear-gradient(135deg,${uc(partnerName)},${uc(partnerName)}aa)`;
-    av2.textContent=partnerName.charAt(0).toUpperCase();
-    document.getElementById('coupleName1').textContent=username;
-    document.getElementById('coupleName2').textContent=partnerName;
+    av1.style.background=`linear-gradient(135deg,${uc(dn)},${uc(dn)}aa)`;
+    av1.textContent=dn.charAt(0).toUpperCase();
+    av2.style.background=`linear-gradient(135deg,${uc(pdn)},${uc(pdn)}aa)`;
+    av2.textContent=pdn.charAt(0).toUpperCase();
+    document.getElementById('coupleName1').textContent=dn;
+    document.getElementById('coupleName2').textContent=pdn;
     const since=localStorage.getItem('daily_couple_since');
     document.getElementById('coupleSince').textContent=since?`绑定于 ${since}`:'';
+    // Try to refresh partner nickname from Firebase
+    if(fbUsersRef&&partnerName){
+      fbUsersRef.child(partnerName).once('value').then(snap=>{
+        const u=snap.val();
+        if(u&&u.nickname&&u.nickname!==pdn){
+          localStorage.setItem('daily_partner_nick',u.nickname);
+          document.getElementById('coupleName2').textContent=u.nickname;
+          av2.textContent=u.nickname.charAt(0).toUpperCase();
+        }
+      }).catch(()=>{});
+    }
   } else {
     linked.style.display='none';
     notLinked.style.display='block';
@@ -1749,6 +1835,7 @@ async function openInviteModal(){
     const inviteRef=fbDb.ref('daily_invites/'+code);
     await inviteRef.set({
       from:username,
+      fromNick:nickname||username,
       createdAt:new Date().toISOString(),
       expiresAt:Date.now()+10*60*1000 // 10 min
     });
@@ -1775,17 +1862,20 @@ async function openInviteModal(){
     inviteRef.on('value', snap=>{
       const val=snap.val();
       if(val && val.accepted){
-        // Someone linked!
         clearInterval(inviteTimerInterval);
         coupleId=val.coupleId;
         partnerName=val.acceptedBy;
         localStorage.setItem('daily_couple_id',coupleId);
         localStorage.setItem('daily_partner',partnerName);
         localStorage.setItem('daily_couple_since',new Date().toLocaleDateString('zh-CN'));
+        // Fetch partner nickname
+        fbUsersRef.child(partnerName).once('value').then(s=>{
+          const u=s.val();
+          if(u&&u.nickname) localStorage.setItem('daily_partner_nick',u.nickname);
+        }).catch(()=>{});
         inviteRef.off('value');
         inviteRef.remove().catch(()=>{});
         closeM('modalInvite');
-        // Re-init Firebase with couple room
         reInitWithCoupleRoom();
         renderCoupleCard();
         toast('💕 绑定成功！欢迎来到你们的共享空间');
@@ -1865,6 +1955,7 @@ async function doLink(){
     partnerName=invite.from;
     localStorage.setItem('daily_couple_id',coupleId);
     localStorage.setItem('daily_partner',partnerName);
+    localStorage.setItem('daily_partner_nick',invite.fromNick||invite.from);
     localStorage.setItem('daily_couple_since',new Date().toLocaleDateString('zh-CN'));
 
     closeM('modalLink');
@@ -1892,7 +1983,7 @@ async function migrateDataToCoupleRoom(cId, otherUser){
     const gData=globalSnap.val();
     if(gData){
       const gList=typeof gData==='object'&&!Array.isArray(gData)?Object.values(gData):(Array.isArray(gData)?gData:[]);
-      gList.filter(e=>e&&e.id&&e.date&&(e.author===username||e.author===otherUser))
+      gList.filter(e=>e&&e.id&&e.date&&(e.authorId===username||e.authorId===otherUser||e.author===username||e.author===otherUser||e.author===(nickname||username)))
         .forEach(e=>{mergedEntries[e.id]=e;});
     }
   }catch{}
@@ -1950,6 +2041,7 @@ async function doUnlink(){
   coupleId=''; partnerName='';
   localStorage.removeItem('daily_couple_id');
   localStorage.removeItem('daily_partner');
+  localStorage.removeItem('daily_partner_nick');
   localStorage.removeItem('daily_couple_since');
 
   // Re-init without couple room (back to global)
@@ -2139,12 +2231,12 @@ if(username){
     initFirebase(FIREBASE_CONFIG);
   } else {
     // Old user without password — force login/register screen
-    // Pre-fill their name so they know which account
     document.getElementById('loginInput').value = username;
-    username = ''; // clear so they must authenticate
-    // Switch to register mode so they set a password
+    const savedNick = nickname || username;
+    username = ''; nickname = '';
     authMode = 'login';
     toggleAuthMode(); // flips to register
+    document.getElementById('loginNickname').value = savedNick;
     showLoginError('系统已升级，请为你的账号设置密码（选择「注册」）');
     setTimeout(()=>document.getElementById('loginPassword').focus(), 300);
   }
