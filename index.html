@@ -947,17 +947,45 @@ let curMoodCat = '常用';
 let fbApp = null, fbDb = null, fbRef = null, fbStatusRef = null, fbUsersRef = null, fbListener = null, fbStatusListener = null;
 let fbConnRef = null;
 let _connWatchdog = null;
+let _autoReconnectTimer = null;
+let _reconnectAttempt = 0;
 const CONN_TIMEOUT_MS = 10000;
+const MAX_RECONNECT_DELAY = 60000;
 function _armConnWatchdog(){
   clearTimeout(_connWatchdog);
   _connWatchdog = setTimeout(() => {
     const label = document.getElementById('syncLabel');
     if(label && (label.textContent === '连接中…' || label.textContent === '同步中…')){
       setSyncStatus('offline','⚠️ 无法连接');
-      toast('云端连接超时 · 点击「我的」→ 🔧 同步诊断');
     }
   }, CONN_TIMEOUT_MS);
 }
+// Exponential backoff auto-reconnect: 2s, 4s, 8s, 16s, 30s, 60s, 60s, ...
+function _scheduleAutoReconnect(){
+  if(_autoReconnectTimer) return;
+  if(!navigator.onLine) return; // pointless when fully offline
+  _reconnectAttempt++;
+  const delay = Math.min(2000 * Math.pow(2, _reconnectAttempt-1), MAX_RECONNECT_DELAY);
+  _autoReconnectTimer = setTimeout(() => {
+    _autoReconnectTimer = null;
+    if(fbDb && username){
+      try { fbDb.goOffline(); fbDb.goOnline(); } catch{}
+    }
+  }, delay);
+}
+// Forcibly reconnect when the tab becomes visible again — Safari/iOS often
+// drop the WebSocket on backgrounding without auto-recovering.
+document.addEventListener('visibilitychange', () => {
+  if(!document.hidden && fbDb && username){
+    try { fbDb.goOffline(); fbDb.goOnline(); } catch{}
+  }
+});
+// Browser-reported online: kick the SDK to try again.
+window.addEventListener('online', () => {
+  if(fbDb && username){
+    try { fbDb.goOffline(); fbDb.goOnline(); } catch{}
+  }
+});
 let pendingImgs = [];
 let pickedStatus = 'together';
 let authMode = 'login'; // 'login' or 'register'
@@ -1100,10 +1128,13 @@ function initFirebase(config) {
       const connected = !!s.val();
       if(connected){
         clearTimeout(_connWatchdog);
+        clearTimeout(_autoReconnectTimer);
+        _reconnectAttempt = 0;
         if(!isInWrite()) setSyncStatus('online','已同步');
       } else {
         setSyncStatus('syncing','连接中…');
         _armConnWatchdog();
+        _scheduleAutoReconnect();
       }
     });
     _armConnWatchdog();
