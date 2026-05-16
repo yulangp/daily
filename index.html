@@ -2590,8 +2590,10 @@ async function runDiag(){
     log('SW 注册数', regs.length);
     regs.forEach((r,i)=>{
       const sw = r.active || r.waiting || r.installing;
-      log('  SW['+i+']', (sw ? sw.state+' · '+sw.scriptURL.split('/').pop() : '无'));
+      log('  SW['+i+']', (sw ? sw.state+' · scope='+r.scope : '无'));
     });
+    const ctrl = navigator.serviceWorker.controller;
+    log('  当前控制者', ctrl ? ctrl.scriptURL.split('/').pop() : '⚠️ 无');
     const names = await _withTimeout(caches.keys(), 2000, 'caches');
     log('正确缓存', names.includes('daily-v4') ? '✅ daily-v4' : ('⚠️ '+(names.join(',')||'无')));
   } catch(e){ log('SW 检查', '失败 '+e.message); }
@@ -2745,7 +2747,21 @@ if ('serviceWorker' in navigator) {
     window.location.reload();
   });
 
-  window.addEventListener('load', () => {
+  window.addEventListener('load', async () => {
+    // Clean up duplicate registrations (different scopes pointing at same SW).
+    // Happens when an old version of this page registered at a wider scope.
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      const here = new URL('./', location.href).href;
+      // Keep the one whose scope is closest to our page; unregister others.
+      const keep = regs.find(r => r.scope === here);
+      if(keep){
+        for(const r of regs){ if(r !== keep) await r.unregister(); }
+      } else if(regs.length > 1){
+        // No exact match — keep first, kill the rest.
+        for(let i=1;i<regs.length;i++) await regs[i].unregister();
+      }
+    } catch(e){ console.warn('SW cleanup failed', e); }
     navigator.serviceWorker.register('./sw.js').then(reg => {
       console.log('SW registered:', reg.scope);
       // Check for updates every 10 minutes — faster recovery from bad releases
