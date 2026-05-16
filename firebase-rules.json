@@ -1,0 +1,56 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "daily_users": {
+      "$user": {
+        ".read": true,
+        ".write": "newData.child('pwdHash').isString() && newData.child('nickname').isString()",
+        "pwdHash":  { ".validate": "newData.isString() && newData.val().length <= 256" },
+        "pwdSalt":  { ".validate": "newData.isString() && newData.val().length <= 64" },
+        "pwdAlgo":  { ".validate": "newData.isString() && newData.val().length <= 32" },
+        "pwdIter":  { ".validate": "newData.isNumber() && newData.val() >= 1000 && newData.val() <= 1000000" },
+        "nickname": { ".validate": "newData.isString() && newData.val().length <= 40" },
+        "createdAt":{ ".validate": "newData.isString()" },
+        "coupleId": { ".validate": "newData.isString() || newData.val() == null" },
+        "partner":  { ".validate": "newData.isString() || newData.val() == null" },
+        "$other":   { ".validate": false }
+      }
+    },
+
+    "daily_private": {
+      "$user": {
+        ".read": true,
+        ".write": true,
+        "entries":       { "$id": { ".validate": "newData.hasChildren(['id','date'])" } },
+        "status_ranges": { "$id": { ".validate": "newData.hasChildren(['from','to','status'])" } }
+      }
+    },
+
+    "daily_rooms": {
+      "$cid": {
+        ".read": true,
+        ".write": true,
+        "entries":       { "$id": { ".validate": "newData.hasChildren(['id','date'])" } },
+        "status_ranges": { "$id": { ".validate": "newData.hasChildren(['from','to','status'])" } }
+      }
+    },
+
+    "daily_couples": {
+      "$cid": {
+        ".read": true,
+        ".write": true,
+        ".validate": "newData.hasChildren(['user1','user2','createdAt'])"
+      }
+    },
+
+    "daily_invites": {
+      "$code": {
+        ".read": true,
+        ".write": true,
+        ".validate": "newData.hasChildren(['from']) || !newData.exists()"
+      }
+    }
+  }
+}

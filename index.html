@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+<!-- Content Security Policy. 'unsafe-inline' is required for the many inline
+     onclick= handlers and the <style> block; removing it would need refactoring
+     every event binding. The script-src whitelist is narrow on purpose. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.firebaseio.com https://*.firebasedatabase.app https://*.googleapis.com https://api.github.com https://www.gstatic.com; manifest-src 'self'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="daily"/>
@@ -11,8 +15,13 @@
 <link rel="manifest" href="./manifest.json"/>
 <link rel="apple-touch-icon" href="./icon-192.png"/>
 <title>daily</title>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<!-- SRI integrity hashes pin Firebase 9.23.0; update if the version changes. -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"
+        integrity="sha384-ajMUFBUFMCyjh8uxJg6bkGcKe9RTolyjwbxB3yES0QQMenP3Oztj/W9vA2SJPcIh"
+        crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"
+        integrity="sha384-f6/UpzjTjIXASlp20cArQsaRh1EvHVJd5kegy/gYR9W2D0a32TnEqUEiW4Zm/5O0"
+        crossorigin="anonymous"></script>
 <style>
 :root{
   --serif:Georgia,"Times New Roman","Songti SC","SimSun",serif;
@@ -576,6 +585,9 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
           </div>
 
           <div class="data-section-title" style="margin-top:12px">☁️ GitHub Gist 备份</div>
+          <div style="font-size:.68rem;color:var(--mid);line-height:1.5;background:rgba(255,248,244,.8);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+            🔐 Token 以明文保存在本设备 localStorage 中。建议使用 <b>fine-grained PAT</b> 且仅授予 <b>gist</b> 权限，并定期轮换。
+          </div>
           <div class="github-input-row">
             <input id="gistTokenInput" type="password" placeholder="GitHub Token（gist权限）" autocomplete="off"/>
           </div>
@@ -769,7 +781,7 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
     <div style="font-size:.8rem;color:var(--mid);line-height:1.55;margin-bottom:12px;">
       将下面的邀请码发给你的另一半，TA 在「输入邀请码」中输入即可完成绑定。
     </div>
-    <div class="invite-code-display" id="inviteCodeDisplay">------</div>
+    <div class="invite-code-display" id="inviteCodeDisplay">--------</div>
     <div class="invite-code-hint">邀请码 10 分钟内有效，仅限一人使用</div>
     <div class="invite-timer" id="inviteTimer"></div>
     <div class="btn-row" style="margin-top:14px">
@@ -785,10 +797,10 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
     <div class="modal-handle"></div>
     <div class="modal-title">输入邀请码</div>
     <div style="font-size:.8rem;color:var(--mid);line-height:1.55;margin-bottom:12px;">
-      输入对方分享给你的 6 位邀请码，绑定后你们将共享所有日记数据 💕
+      输入对方分享给你的 8 位邀请码，绑定后你们将共享所有日记数据 💕
     </div>
     <div class="form-block">
-      <input class="input-field" id="linkCodeInput" placeholder="输入 6 位邀请码" maxlength="6"
+      <input class="input-field" id="linkCodeInput" placeholder="输入 8 位邀请码" maxlength="8"
         style="text-align:center;font-size:1.4rem;letter-spacing:.25em;font-family:'Courier New',monospace;" autocomplete="off"/>
     </div>
     <div id="linkError" style="font-size:.76rem;color:var(--red);text-align:center;margin-bottom:8px;display:none"></div>
@@ -862,20 +874,36 @@ const show=id=>document.getElementById(id).classList.remove('hidden');
 const hide=id=>document.getElementById(id).classList.add('hidden');
 
 // ══ DEDUP UTILITIES ══════════════════════════════════════════
-// Entries: deduplicate by id, keep the one with latest createdAt
+// Entries: deduplicate by id; tombstones (deleted:true) win over live versions
+// to prevent cross-device "delete resurrection".
 function dedupEntries(arr){
   const map=new Map();
   arr.forEach(e=>{
     if(!e||!e.id) return;
     const existing=map.get(e.id);
-    if(!existing||(e.createdAt&&existing.createdAt&&e.createdAt>existing.createdAt)){
-      map.set(e.id,e);
-    }
+    if(!existing){ map.set(e.id,e); return; }
+    // A tombstone always beats a live entry with the same id
+    if(e.deleted && !existing.deleted){ map.set(e.id,e); return; }
+    if(existing.deleted && !e.deleted) return;
+    // Same delete state: pick the newer one
+    const eTime = e.deletedAt || e.createdAt || '';
+    const xTime = existing.deletedAt || existing.createdAt || '';
+    if(eTime > xTime) map.set(e.id,e);
   });
   const result=[...map.values()];
   result.sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
   return result;
 }
+// Tombstones older than this are safe to purge — long enough for all devices to sync.
+const TOMBSTONE_TTL_MS = 30*86400000; // 30 days
+function purgeOldTombstones(){
+  const cutoff = new Date(Date.now()-TOMBSTONE_TTL_MS).toISOString();
+  const before = entries.length;
+  entries = entries.filter(e => !(e.deleted && e.deletedAt && e.deletedAt < cutoff));
+  return before - entries.length;
+}
+// Live (non-deleted) entries — use for rendering and stats.
+const liveEntries = () => entries.filter(e => !e.deleted);
 // StatusRanges: deduplicate by from+to+status key
 function dedupStatusRanges(arr){
   const map=new Map();
@@ -936,6 +964,20 @@ function triggerImgPick() {
   document.getElementById('imgFileInput').click();
 }
 
+// Approximate decoded size of a base64 data URL (bytes of the original image).
+function _b64Bytes(b64){
+  const i = b64.indexOf(',');
+  const data = i>=0 ? b64.slice(i+1) : b64;
+  return Math.floor(data.length * 0.75);
+}
+function _humanSize(bytes){
+  if(bytes < 1024) return bytes + ' B';
+  if(bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/1024/1024).toFixed(2) + ' MB';
+}
+const ENTRY_IMG_WARN_BYTES = 4 * 1024 * 1024;   // warn on a single entry over 4 MB
+const TOTAL_WRITE_LIMIT_BYTES = 12 * 1024 * 1024; // block writes that would exceed Firebase 16 MB cap
+
 async function handleImgFiles(files) {
   const remaining = MAX_IMGS - pendingImgs.length;
   const toProcess = Array.from(files).slice(0, remaining);
@@ -950,6 +992,10 @@ async function handleImgFiles(files) {
   } catch(e) { toast('⚠️ 图片处理失败'); }
   document.getElementById('imgLoadingRow').style.display = 'none';
   document.getElementById('saveBtn').disabled = false;
+  const totalBytes = pendingImgs.reduce((s,b)=>s+_b64Bytes(b), 0);
+  if(totalBytes > ENTRY_IMG_WARN_BYTES){
+    toast(`⚠️ 当前图片约 ${_humanSize(totalBytes)}，过大可能拖慢同步`);
+  }
   renderImgPreviews();
 }
 
@@ -1028,20 +1074,30 @@ function initFirebase(config) {
     }
 
     // ── Write lock: prevents listener from overwriting during active writes ──
-    let _syncLock = false;
-    let _syncLockTimer = null;
+    // Use a counter (not a flag) so concurrent writes don't unlock prematurely.
+    // Echo window: brief grace period after the last write completes, to absorb
+    // the listener event Firebase fires back at us for our own write.
+    let _pendingWrites = 0;
+    let _lastUnlockAt = 0;
+    let _safetyTimer = null;
+    const ECHO_WINDOW_MS = 800;
+    const SAFETY_MAX_MS = 15000; // bail out if a write hangs forever
     function lockSync(){
-      _syncLock = true;
-      clearTimeout(_syncLockTimer);
-      _syncLockTimer = setTimeout(()=>{ _syncLock = false; }, 2000);
+      _pendingWrites++;
+      clearTimeout(_safetyTimer);
+      _safetyTimer = setTimeout(()=>{ _pendingWrites = 0; }, SAFETY_MAX_MS);
     }
     function unlockSync(){
-      clearTimeout(_syncLockTimer);
-      _syncLockTimer = setTimeout(()=>{ _syncLock = false; }, 800);
+      _pendingWrites = Math.max(0, _pendingWrites - 1);
+      _lastUnlockAt = Date.now();
+      if(_pendingWrites === 0) clearTimeout(_safetyTimer);
+    }
+    function isInWrite(){
+      return _pendingWrites > 0 || (Date.now() - _lastUnlockAt < ECHO_WINDOW_MS);
     }
 
     fbListener = fbRef.on('value', snapshot => {
-      if(_syncLock){ setSyncStatus('online','已同步'); return; } // Skip during writes
+      if(isInWrite()){ setSyncStatus('online','已同步'); return; } // Skip during writes/echo
       const data = snapshot.val();
       if (data) {
         const remote = typeof data === 'object' && !Array.isArray(data)
@@ -1070,7 +1126,7 @@ function initFirebase(config) {
 
     // Status ranges listener — same merge strategy
     fbStatusListener = fbStatusRef.on('value', snapshot => {
-      if(_syncLock){ return; }
+      if(isInWrite()){ return; }
       const data = snapshot.val();
       if (data) {
         const remote = typeof data === 'object' && !Array.isArray(data)
@@ -1096,11 +1152,19 @@ function initFirebase(config) {
 
 function writeToFirebase(list) {
   if (!fbRef) return;
-  if(window._lockSync) window._lockSync();
-  setSyncStatus('syncing', '同步中…');
   const deduped = dedupEntries(list);
   const obj = {};
   deduped.forEach(e => { obj[e.id] = e; });
+  // Pre-flight size check — Firebase RTDB rejects writes over ~16 MB.
+  let payloadSize = 0;
+  try { payloadSize = new Blob([JSON.stringify(obj)]).size; } catch {}
+  if(payloadSize > TOTAL_WRITE_LIMIT_BYTES){
+    toast(`⚠️ 数据 ${_humanSize(payloadSize)} 过大，跳过云端同步`);
+    setSyncStatus('offline','本地保存');
+    return;
+  }
+  if(window._lockSync) window._lockSync();
+  setSyncStatus('syncing', '同步中…');
   fbRef.set(obj)
     .then(() => { if(window._unlockSync) window._unlockSync(); setSyncStatus('online', '已同步'); })
     .catch(err => { if(window._unlockSync) window._unlockSync(); console.error(err); toast('⚠️ 同步失败'); setSyncStatus('offline','同步失败'); });
@@ -1117,17 +1181,9 @@ function writeStatusToFirebase() {
     .catch(err => { if(window._unlockSync) window._unlockSync(); console.error(err); });
 }
 
-function deleteFromFirebase(id) {
-  if (!fbRef) return;
-  // Use full set() instead of child.remove() to prevent merge from resurrecting the entry
-  if(window._lockSync) window._lockSync();
-  const deduped = dedupEntries(entries);
-  const obj = {};
-  deduped.forEach(e => { obj[e.id] = e; });
-  fbRef.set(obj)
-    .then(()=>{ if(window._unlockSync) window._unlockSync(); })
-    .catch(err => { if(window._unlockSync) window._unlockSync(); console.error(err); });
-}
+// Deletions are handled by writing a tombstone (deleted:true) into the entries
+// array and calling writeToFirebase(entries). A separate delete path is no longer
+// needed — child.remove() would let the listener resurrect the entry on other devices.
 
 // ══ LOCAL STORAGE (per-account isolation) ═════════════════════
 function _entryKey(){ return 'daily_entries_'+username; }
@@ -1148,11 +1204,25 @@ function loadLocal() {
       }
     }
     entries = r ? dedupEntries(JSON.parse(r)) : [];
+    purgeOldTombstones();
   } catch { entries = []; }
+}
+// Track quota-related toasts to avoid spamming on every save.
+let _quotaWarnedAt = 0;
+function _warnQuotaOnce(){
+  const now = Date.now();
+  if(now - _quotaWarnedAt < 60000) return; // at most once per minute
+  _quotaWarnedAt = now;
+  toast('⚠️ 本地存储已满，请导出 JSON 并清理旧记录');
 }
 function saveLocal() {
   if(!username) return;
-  try { localStorage.setItem(_entryKey(), JSON.stringify(entries)); } catch{}
+  try { localStorage.setItem(_entryKey(), JSON.stringify(entries)); }
+  catch(e){
+    if(e && (e.name==='QuotaExceededError' || e.code===22 || e.code===1014)){
+      _warnQuotaOnce();
+    } else { console.error('saveLocal failed:', e); }
+  }
 }
 function loadLocalStatus() {
   if(!username){ statusRanges=[]; return; }
@@ -1171,7 +1241,12 @@ function loadLocalStatus() {
 }
 function saveLocalStatus() {
   if(!username) return;
-  try { localStorage.setItem(_statusKey(), JSON.stringify(statusRanges)); } catch{}
+  try { localStorage.setItem(_statusKey(), JSON.stringify(statusRanges)); }
+  catch(e){
+    if(e && (e.name==='QuotaExceededError' || e.code===22 || e.code===1014)){
+      _warnQuotaOnce();
+    } else { console.error('saveLocalStatus failed:', e); }
+  }
 }
 function setSyncStatus(state, label) {
   document.getElementById('syncDot').className = 'sync-dot ' + state;
@@ -1179,27 +1254,88 @@ function setSyncStatus(state, label) {
 }
 
 // ══ AUTH (PASSWORD-BASED) ═════════════════════════════════════
+// New users: PBKDF2-SHA256 with per-user 16-byte salt and 100k iterations.
+// Legacy users (pre-upgrade): single SHA-256 of `acct:daily:pwd`. On their
+// next successful login the record is silently upgraded to PBKDF2.
 
-// SHA-256 hash via Web Crypto API
+const PBKDF2_ALGO = 'pbkdf2-100k';
+const PBKDF2_ITER = 100000;
+const _toHex = bytes => Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join('');
+const _fromHex = hex => new Uint8Array(hex.match(/.{1,2}/g).map(h=>parseInt(h,16)));
+
 async function sha256(str){
   const buf = new TextEncoder().encode(str);
   const hash = await crypto.subtle.digest('SHA-256', buf);
-  return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  return _toHex(new Uint8Array(hash));
 }
 
-// Local credential cache for offline login
-function saveLocalCred(name, hash){
+function genSalt(bytes=16){
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return _toHex(arr);
+}
+
+async function pbkdf2(password, saltHex, iterations=PBKDF2_ITER){
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']
+  );
+  const salt = _fromHex(saltHex);
+  const bits = await crypto.subtle.deriveBits(
+    {name:'PBKDF2', salt, iterations, hash:'SHA-256'},
+    keyMaterial, 256
+  );
+  return _toHex(new Uint8Array(bits));
+}
+
+// Verify a plaintext password against a stored Firebase user record.
+// Returns true/false, never throws on bad input.
+async function verifyPassword(acct, pwd, userData){
+  if(!userData || !userData.pwdHash) return false;
+  if(userData.pwdAlgo === PBKDF2_ALGO && userData.pwdSalt){
+    const iter = userData.pwdIter || PBKDF2_ITER;
+    const h = await pbkdf2(pwd, userData.pwdSalt, iter);
+    return h === userData.pwdHash;
+  }
+  // Legacy SHA-256 fallback
+  const legacy = await sha256(acct + ':daily:' + pwd);
+  return legacy === userData.pwdHash;
+}
+
+// Build a new-format Firebase password record for the given plaintext password.
+async function buildPwdRecord(pwd){
+  const salt = genSalt(16);
+  const hash = await pbkdf2(pwd, salt, PBKDF2_ITER);
+  return { pwdHash:hash, pwdSalt:salt, pwdAlgo:PBKDF2_ALGO, pwdIter:PBKDF2_ITER };
+}
+
+// Local credential cache for offline login. Stores {algo,salt,hash,iter} for
+// PBKDF2 creds; legacy string entries (raw SHA-256 hash) are still accepted.
+function saveLocalCred(name, cred){
   try{
     const creds = JSON.parse(localStorage.getItem('daily_creds')||'{}');
-    creds[name] = hash;
+    creds[name] = cred;
     localStorage.setItem('daily_creds', JSON.stringify(creds));
   }catch{}
 }
 function getLocalCred(name){
   try{
     const creds = JSON.parse(localStorage.getItem('daily_creds')||'{}');
-    return creds[name]||null;
+    const c = creds[name];
+    if(!c) return null;
+    if(typeof c === 'string') return {algo:'sha256-legacy', hash:c}; // legacy form
+    return c;
   }catch{return null;}
+}
+async function verifyLocalCred(acct, pwd, localCred){
+  if(!localCred) return false;
+  if(localCred.algo === PBKDF2_ALGO && localCred.salt){
+    const h = await pbkdf2(pwd, localCred.salt, localCred.iter || PBKDF2_ITER);
+    return h === localCred.hash;
+  }
+  // Legacy fallback
+  const legacy = await sha256(acct + ':daily:' + pwd);
+  return legacy === localCred.hash;
 }
 
 // Toggle login/register mode
@@ -1229,20 +1365,18 @@ async function doAuth(){
   if(!pwd||pwd.length<4){showLoginError('密码至少4位');return;}
   hideLoginError();
 
-  const hash = await sha256(acct + ':daily:' + pwd);
-
   if(authMode==='register'){
     const nick = (document.getElementById('loginNickname').value||'').trim();
     if(!nick){showLoginError('请输入昵称');return;}
     const confirm = document.getElementById('loginPasswordConfirm').value;
     if(pwd!==confirm){showLoginError('两次密码不一致');return;}
-    await doRegister(acct, nick, hash);
+    await doRegister(acct, nick, pwd);
   } else {
-    await doLoginWithPwd(acct, hash);
+    await doLoginWithPwd(acct, pwd);
   }
 }
 
-async function doRegister(acct, nick, hash){
+async function doRegister(acct, nick, pwd){
   try{
     if(!fbDb) initFirebaseLight();
     const snap = await fbUsersRef.child(acct).once('value');
@@ -1250,8 +1384,9 @@ async function doRegister(acct, nick, hash){
       showLoginError('该账号已注册，请切换到「登录」');
       return;
     }
-    await fbUsersRef.child(acct).set({pwdHash:hash, nickname:nick, createdAt:new Date().toISOString()});
-    saveLocalCred(acct, hash);
+    const rec = await buildPwdRecord(pwd);
+    await fbUsersRef.child(acct).set({...rec, nickname:nick, createdAt:new Date().toISOString()});
+    saveLocalCred(acct, {algo:PBKDF2_ALGO, salt:rec.pwdSalt, iter:rec.pwdIter, hash:rec.pwdHash});
     nickname = nick;
     localStorage.setItem('daily_nickname', nick);
     enterApp(acct);
@@ -1262,16 +1397,25 @@ async function doRegister(acct, nick, hash){
   }
 }
 
-async function doLoginWithPwd(acct, hash){
-  const localHash = getLocalCred(acct);
-  if(localHash && localHash===hash){
+async function doLoginWithPwd(acct, pwd){
+  const localCred = getLocalCred(acct);
+  if(localCred && await verifyLocalCred(acct, pwd, localCred)){
     nickname = localStorage.getItem('daily_nickname') || acct;
     enterApp(acct);
+    // Refresh nickname + opportunistically upgrade legacy local creds
     try{
       if(!fbDb) initFirebaseLight();
-      fbUsersRef.child(acct).once('value').then(snap=>{
+      fbUsersRef.child(acct).once('value').then(async snap=>{
         const u=snap.val();
         if(u&&u.nickname){nickname=u.nickname;localStorage.setItem('daily_nickname',nickname);renderAll();}
+        if(localCred.algo === 'sha256-legacy' && u && (!u.pwdAlgo)){
+          // Upgrade both server and local to PBKDF2
+          try{
+            const rec = await buildPwdRecord(pwd);
+            await fbUsersRef.child(acct).update(rec);
+            saveLocalCred(acct, {algo:PBKDF2_ALGO, salt:rec.pwdSalt, iter:rec.pwdIter, hash:rec.pwdHash});
+          }catch(err){ console.warn('PBKDF2 upgrade deferred:', err); }
+        }
       });
     }catch{}
     return;
@@ -1290,17 +1434,30 @@ async function doLoginWithPwd(acct, hash){
       openM('modalSetPwd');
       return;
     }
-    if(userData.pwdHash!==hash){
+    const ok = await verifyPassword(acct, pwd, userData);
+    if(!ok){
       showLoginError('密码错误');
       return;
     }
-    saveLocalCred(acct, hash);
+    // If the record was legacy SHA-256, transparently upgrade to PBKDF2.
+    if(!userData.pwdAlgo){
+      try{
+        const rec = await buildPwdRecord(pwd);
+        await fbUsersRef.child(acct).update(rec);
+        saveLocalCred(acct, {algo:PBKDF2_ALGO, salt:rec.pwdSalt, iter:rec.pwdIter, hash:rec.pwdHash});
+      }catch(err){
+        console.warn('PBKDF2 upgrade deferred:', err);
+        saveLocalCred(acct, {algo:'sha256-legacy', hash:userData.pwdHash});
+      }
+    } else {
+      saveLocalCred(acct, {algo:userData.pwdAlgo, salt:userData.pwdSalt, iter:userData.pwdIter||PBKDF2_ITER, hash:userData.pwdHash});
+    }
     nickname = userData.nickname || acct;
     localStorage.setItem('daily_nickname', nickname);
     enterApp(acct);
   }catch(e){
     console.error(e);
-    if(!localHash){
+    if(!localCred){
       showLoginError('首次登录需要联网验证');
     } else {
       showLoginError('密码错误（离线模式）');
@@ -1364,11 +1521,11 @@ async function doMigrateSetPwd(){
   if(pwd!==confirm){errEl.textContent='两次密码不一致';errEl.style.display='block';return;}
 
   const acct = pendingMigrateName || username;
-  const hash = await sha256(acct + ':daily:' + pwd);
+  const rec = await buildPwdRecord(pwd);
   try{
     const existingNick = nickname || acct;
-    await fbUsersRef.child(acct).set({pwdHash:hash, nickname:existingNick, createdAt:new Date().toISOString()});
-    saveLocalCred(acct, hash);
+    await fbUsersRef.child(acct).set({...rec, nickname:existingNick, createdAt:new Date().toISOString()});
+    saveLocalCred(acct, {algo:PBKDF2_ALGO, salt:rec.pwdSalt, iter:rec.pwdIter, hash:rec.pwdHash});
     nickname = existingNick;
     localStorage.setItem('daily_nickname', existingNick);
     closeM('modalSetPwd');
@@ -1402,35 +1559,31 @@ async function doChangePwd(){
   if(!newPwd||newPwd.length<4){errEl.textContent='新密码至少4位';errEl.style.display='block';return;}
   if(newPwd!==confirm){errEl.textContent='两次新密码不一致';errEl.style.display='block';return;}
 
-  const oldHash = await sha256(username + ':daily:' + oldPwd);
-  // Verify old password
+  // Verify old password — prefer server record, fall back to local cred on offline.
+  let verified = false;
   try{
     const snap = await fbUsersRef.child(username).once('value');
     const userData = snap.val();
-    if(!userData||userData.pwdHash!==oldHash){
-      // Also check local
-      const localHash = getLocalCred(username);
-      if(!localHash||localHash!==oldHash){
-        errEl.textContent='当前密码错误';errEl.style.display='block';return;
-      }
-    }
-  }catch(e){
-    // Offline: check local
-    const localHash = getLocalCred(username);
-    if(!localHash||localHash!==oldHash){
-      errEl.textContent='当前密码错误';errEl.style.display='block';return;
-    }
+    if(userData) verified = await verifyPassword(username, oldPwd, userData);
+  }catch{ /* fall through to local */ }
+  if(!verified){
+    const localCred = getLocalCred(username);
+    if(localCred) verified = await verifyLocalCred(username, oldPwd, localCred);
+  }
+  if(!verified){
+    errEl.textContent='当前密码错误';errEl.style.display='block';return;
   }
 
-  const newHash = await sha256(username + ':daily:' + newPwd);
+  const rec = await buildPwdRecord(newPwd);
+  const localCredObj = {algo:PBKDF2_ALGO, salt:rec.pwdSalt, iter:rec.pwdIter, hash:rec.pwdHash};
   try{
-    await fbUsersRef.child(username).update({pwdHash:newHash});
-    saveLocalCred(username, newHash);
+    await fbUsersRef.child(username).update(rec);
+    saveLocalCred(username, localCredObj);
     closeM('modalChangePwd');
     toast('🔒 密码已修改');
   }catch(e){
     // Save locally even if Firebase fails
-    saveLocalCred(username, newHash);
+    saveLocalCred(username, localCredObj);
     closeM('modalChangePwd');
     toast('🔒 密码已本地更新（待联网同步）');
   }
@@ -1535,7 +1688,7 @@ function getStatusForDate(dateStr) {
 function renderCalendar() {
   document.getElementById('calTitle').textContent = `${vY} 年 ${MONTHS[vM]}`;
   const pfx = `${vY}-${p2(vM+1)}`;
-  const mE = entries.filter(e => e.date.startsWith(pfx));
+  const mE = entries.filter(e => !e.deleted && e.date.startsWith(pfx));
   const authors = [...new Set(mE.map(e => e.author))];
   const legend = document.getElementById('calLegend');
   legend.style.display = authors.length ? 'flex' : 'none';
@@ -1548,7 +1701,7 @@ function renderCalendar() {
   const first = new Date(vY,vM,1).getDay(), days = new Date(vY,vM+1,0).getDate(), td = todayStr();
   for(let i=0;i<first;i++){const el=document.createElement('div');el.className='day-cell empty';grid.appendChild(el);}
   for(let d=1;d<=days;d++){
-    const ds=`${vY}-${p2(vM+1)}-${p2(d)}`, de=entries.filter(e=>e.date===ds);
+    const ds=`${vY}-${p2(vM+1)}-${p2(d)}`, de=entries.filter(e=>!e.deleted&&e.date===ds);
     const status = getStatusForDate(ds);
     const cell=document.createElement('div');
     let cls='day-cell'+(ds===td?' today':'')+(d===selDay?' selected':'');
@@ -1580,23 +1733,33 @@ function selectDay(d){
 
 function renderDayPanel(){
   if(!selDay) return;
-  const ds=`${vY}-${p2(vM+1)}-${p2(selDay)}`, de=entries.filter(e=>e.date===ds).sort((a,b)=>a.time.localeCompare(b.time));
+  const ds=`${vY}-${p2(vM+1)}-${p2(selDay)}`, de=entries.filter(e=>!e.deleted&&e.date===ds).sort((a,b)=>a.time.localeCompare(b.time));
   document.getElementById('dayTitle').textContent=`${vY}年${vM+1}月${selDay}日`;
   document.getElementById('dayCount').textContent=`${de.length} 条`;
   const cont=document.getElementById('dayEntries'); cont.innerHTML='';
   de.forEach(e=>{
     const c=document.createElement('div'); c.className='entry-card'; c.style.borderLeftColor=uc(e.author);
-    let thumbsHtml='';
+    c.innerHTML=`<div class="ec-top"><span class="ec-emoji">${esc(e.mood.emoji)}</span><div class="ec-info"><div class="ec-author" style="color:${uc(e.author)}">${esc(e.author)}</div><div class="ec-meta">${esc(e.time)} · ${esc(e.mood.label)}${e.images&&e.images.length?' · 📷'+e.images.length:''}</div></div></div>${e.note?`<div class="ec-note">${esc(e.note)}</div>`:''}`;
     if(e.images&&e.images.length){
-      thumbsHtml='<div class="ec-thumbs">'+e.images.slice(0,3).map(src=>`<img class="ec-thumb" src="${src}" loading="lazy"/>`).join('')+(e.images.length>3?`<div class="ec-thumb" style="display:flex;align-items:center;justify-content:center;font-size:.72rem;color:var(--mid)">+${e.images.length-3}</div>`:'')+'</div>';
+      const thumbs=document.createElement('div'); thumbs.className='ec-thumbs';
+      e.images.slice(0,3).forEach(src=>{
+        const img=document.createElement('img'); img.className='ec-thumb'; img.loading='lazy'; img.src=src;
+        thumbs.appendChild(img);
+      });
+      if(e.images.length>3){
+        const more=document.createElement('div'); more.className='ec-thumb';
+        more.style.cssText='display:flex;align-items:center;justify-content:center;font-size:.72rem;color:var(--mid)';
+        more.textContent='+'+(e.images.length-3);
+        thumbs.appendChild(more);
+      }
+      c.appendChild(thumbs);
     }
-    c.innerHTML=`<div class="ec-top"><span class="ec-emoji">${e.mood.emoji}</span><div class="ec-info"><div class="ec-author" style="color:${uc(e.author)}">${esc(e.author)}</div><div class="ec-meta">${e.time} · ${e.mood.label}${e.images&&e.images.length?' · 📷'+e.images.length:''}</div></div></div>${e.note?`<div class="ec-note">${esc(e.note)}</div>`:''}${thumbsHtml}`;
     c.onclick=()=>openView(e); cont.appendChild(c);
   });
 }
 
 function renderFeed(){
-  const s=[...entries].sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
+  const s=liveEntries().sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
   rFL('feedList',s.slice(0,10)); rFL('allFeedList',s);
 }
 function rFL(id,list){
@@ -1605,7 +1768,7 @@ function rFL(id,list){
   list.forEach(e=>{
     const item=document.createElement('div'); item.className='feed-item';
     const imgBadge=e.images&&e.images.length?`<span class="fi-img-badge">📷${e.images.length}</span>`:'';
-    item.innerHTML=`<span class="fi-emoji">${e.mood.emoji}</span><div class="fi-main"><div class="fi-author" style="color:${uc(e.author)}">${esc(e.author)}</div><div class="fi-note">${esc(e.note||e.mood.label)}</div></div><div class="fi-right"><div class="fi-date">${e.date.slice(5)}</div><div class="fi-time">${e.time}</div>${imgBadge}</div>`;
+    item.innerHTML=`<span class="fi-emoji">${esc(e.mood.emoji)}</span><div class="fi-main"><div class="fi-author" style="color:${uc(e.author)}">${esc(e.author)}</div><div class="fi-note">${esc(e.note||e.mood.label)}</div></div><div class="fi-right"><div class="fi-date">${esc(e.date.slice(5))}</div><div class="fi-time">${esc(e.time)}</div>${imgBadge}</div>`;
     item.onclick=()=>openView(e); el.appendChild(item);
   });
 }
@@ -1622,9 +1785,10 @@ function renderProfile(){
   const pdn=localStorage.getItem('daily_partner_nick')||partnerName;
   document.getElementById('profileSub').textContent=coupleId&&partnerName?
     `💞 与 ${pdn} 的共享空间`:'daily 共享日历成员';
-  const mine=entries.filter(e=>e.authorId===username||e.author===dn||e.author===username);
-  const days=new Set(entries.map(e=>e.date)).size;
-  document.getElementById('statTotal').textContent=entries.length;
+  const live=liveEntries();
+  const mine=live.filter(e=>e.authorId===username||e.author===dn||e.author===username);
+  const days=new Set(live.map(e=>e.date)).size;
+  document.getElementById('statTotal').textContent=live.length;
   document.getElementById('statMine').textContent=mine.length;
   document.getElementById('statDays').textContent=days;
 
@@ -1640,7 +1804,7 @@ function renderProfile(){
   document.getElementById('statApart').textContent=apartDays;
 
   // Data info
-  document.getElementById('dataEntryCount').textContent=entries.length+' 条';
+  document.getElementById('dataEntryCount').textContent=live.length+' 条';
   document.getElementById('dataStatusCount').textContent=statusRanges.length+' 段';
   const lb=localStorage.getItem('daily_last_backup');
   document.getElementById('dataLastBackup').textContent=lb||'从未';
@@ -1755,8 +1919,10 @@ function openView(e){
   if(e.authorId===username||e.author===username||e.author===(nickname||username)){
     const d=document.createElement('button'); d.className='btn-danger'; d.textContent='删除';
     d.onclick=()=>{
-      entries=entries.filter(x=>x.id!==e.id);
-      saveLocal(); deleteFromFirebase(e.id); triggerAutoGistBackup();
+      // Mark as tombstone so the deletion propagates across devices and survives merge.
+      const idx=entries.findIndex(x=>x.id===e.id);
+      if(idx>=0) entries[idx]={...entries[idx], deleted:true, deletedAt:new Date().toISOString()};
+      saveLocal(); writeToFirebase(entries); triggerAutoGistBackup();
       closeM('modalView'); renderAll(); toast('已删除');
     };
     act.appendChild(d);
@@ -1896,9 +2062,12 @@ function renderCoupleCard(){
 }
 
 function genCode(){
+  // 8 chars from a 32-char ambiguity-free alphabet → 32^8 ≈ 1.1×10^12 combinations
   const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const buf = new Uint32Array(8);
+  crypto.getRandomValues(buf);
   let code='';
-  for(let i=0;i<6;i++) code+=chars[Math.floor(Math.random()*chars.length)];
+  for(let i=0;i<8;i++) code+=chars[buf[i] % chars.length];
   return code;
 }
 
@@ -1989,7 +2158,7 @@ async function doLink(){
   const code=document.getElementById('linkCodeInput').value.trim().toUpperCase();
   const errEl=document.getElementById('linkError');
   errEl.style.display='none';
-  if(!code||code.length!==6){errEl.textContent='请输入 6 位邀请码';errEl.style.display='block';return;}
+  if(!code||code.length!==8){errEl.textContent='请输入 8 位邀请码';errEl.style.display='block';return;}
 
   try{
     if(!fbDb) initFirebaseLight();
@@ -2350,6 +2519,48 @@ if(username){
 } else {
   setTimeout(()=>document.getElementById('loginInput').focus(), 300);
 }
+
+// ══ SERVICE WORKER REGISTRATION ══════════════════════════════
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      console.log('SW registered:', reg.scope);
+      // Check for updates every 30 minutes
+      setInterval(() => reg.update(), 30 * 60 * 1000);
+      // Notify user when new version is available
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            // New version available
+            if (confirm('daily 有新版本可用，是否立即更新？')) {
+              newWorker.postMessage({ type: 'SKIP_WAITING' });
+              window.location.reload();
+            }
+          }
+        });
+      });
+    }).catch(err => console.error('SW registration failed:', err));
+  });
+}
+
+// ══ INSTALL PROMPT (Android) ═════════════════════════════════
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  // Show install hint after 3 seconds if not already installed
+  setTimeout(() => {
+    if (deferredInstallPrompt && username) {
+      toast('💡 提示：点击浏览器菜单「添加到主屏幕」可像 App 一样使用');
+    }
+  }, 3000);
+});
+// Track successful install
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  toast('🎉 daily 已添加到主屏幕！');
+});
 </script>
 </body>
 </html>
