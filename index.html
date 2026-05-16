@@ -2562,90 +2562,106 @@ function openDiag(){
   openM('modalDiag');
 }
 
+// Race a promise against a timeout so a hung Firebase call doesn't freeze the
+// whole diagnostic. Resolves with the value or rejects with a clear timeout.
+function _withTimeout(promise, ms, tag){
+  let to;
+  const timeout = new Promise((_, rej) => {
+    to = setTimeout(() => rej(new Error('timeout >'+ms+'ms ('+tag+')')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(to));
+}
+
 async function runDiag(){
   const out = document.getElementById('diagOutput');
   const lines = [];
-  const log = (k,v) => lines.push((k+':').padEnd(22,' ') + v);
-  out.textContent = '运行中…';
+  const log = (k,v) => { lines.push((k+':').padEnd(22,' ') + v); out.textContent = lines.join('\n'); };
+  lines.push('诊断进行中…'); out.textContent = lines[0]; lines.length = 0;
 
-  // 1. Build/version markers
+  // 1. Build/version markers (instant)
   const csp = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
   log('CSP 含 wss', csp && csp.content.includes('wss://') ? '✅ 是' : '❌ 否（旧版本！）');
-  log('用户代理', (navigator.userAgent||'').slice(0,80));
   log('在线状态', navigator.onLine ? '✅ online' : '❌ offline');
+  log('UA 摘要', (navigator.userAgent||'').slice(0,70));
 
-  // 2. Service Worker
+  // 2. Service Worker (instant)
   try {
-    const regs = await navigator.serviceWorker.getRegistrations();
+    const regs = await _withTimeout(navigator.serviceWorker.getRegistrations(), 2000, 'sw');
     log('SW 注册数', regs.length);
     regs.forEach((r,i)=>{
       const sw = r.active || r.waiting || r.installing;
-      log('  SW['+i+'] 状态', sw ? sw.state : '无');
-      log('  SW['+i+'] URL', sw ? sw.scriptURL : '无');
+      log('  SW['+i+']', (sw ? sw.state+' · '+sw.scriptURL.split('/').pop() : '无'));
     });
-    const names = await caches.keys();
-    log('缓存版本', names.join(', ') || '无');
-    log('正确缓存', names.includes('daily-v4') ? '✅ daily-v4' : ('⚠️ '+(names[0]||'无')));
+    const names = await _withTimeout(caches.keys(), 2000, 'caches');
+    log('正确缓存', names.includes('daily-v4') ? '✅ daily-v4' : ('⚠️ '+(names.join(',')||'无')));
   } catch(e){ log('SW 检查', '失败 '+e.message); }
 
-  // 3. Firebase SDK state
-  log('Firebase 已加载', (window.firebase ? '✅' : '❌'));
-  log('fbApp', fbApp ? '✅ 已初始化' : '❌');
-  log('fbRef 路径', fbRef ? fbRef.toString() : '❌ null');
-  log('待写入计数', (typeof window._lockSync === 'function') ? '（写锁就绪）' : '⚠️ 未挂载');
+  // 3. Firebase SDK state (instant)
+  log('Firebase SDK', (window.firebase ? '✅' : '❌'));
+  log('fbApp', fbApp ? '✅' : '❌');
+  log('fbRef 路径', fbRef ? fbRef.toString().replace(/^https?:\/\/[^/]+/,'') : '❌');
+  log('当前账号', username || '未登录');
+  log('情侣绑定', coupleId || '未绑定');
+  log('本地条目', entries.length + ' (墓碑 ' + entries.filter(e=>e.deleted).length + ')');
 
-  // 4. Live connection state from Firebase
+  // 4. Firebase connection — short timeout, this is the critical signal
   if(fbDb){
     try {
-      const snap = await fbDb.ref('.info/connected').once('value');
+      const snap = await _withTimeout(fbDb.ref('.info/connected').once('value'), 3000, '.info/connected');
       log('.info/connected', snap.val() ? '✅ true（实时通道已建立）' : '❌ false（无连接）');
-      const offset = await fbDb.ref('.info/serverTimeOffset').once('value');
-      log('服务器时间偏移', offset.val() + 'ms');
-    } catch(e){ log('.info 读取', '失败: '+e.message); }
+    } catch(e){ log('.info/connected', '⏱️ '+e.message); }
   }
 
-  // 5. REST API direct probe (bypasses SDK)
+  // 5. REST API direct probe (bypasses SDK) — uses shallow=true so payload is tiny
   try {
     const t0 = Date.now();
-    const r = await fetch('https://daily-app-a4ff9-default-rtdb.asia-southeast1.firebasedatabase.app/.json?shallow=true', {cache:'no-store'});
+    const ctrl = new AbortController();
+    const to = setTimeout(()=>ctrl.abort(), 5000);
+    const r = await fetch('https://daily-app-a4ff9-default-rtdb.asia-southeast1.firebasedatabase.app/.json?shallow=true', {cache:'no-store', signal:ctrl.signal});
+    clearTimeout(to);
     log('REST 探测', 'HTTP '+r.status+' ('+(Date.now()-t0)+'ms)');
     if(r.status === 401) log('  → 提示', '需要鉴权');
     if(r.status === 423) log('  → 提示', '数据库已锁');
-  } catch(e){ log('REST 探测', '失败: '+e.message); }
+  } catch(e){ log('REST 探测', '失败: '+(e.message||e)); }
 
-  // 6. Account / data state
-  log('当前账号', username || '未登录');
-  log('情侣绑定', coupleId ? coupleId : '未绑定');
-  log('本地条目', entries.length + ' (含 ' + entries.filter(e=>e.deleted).length + ' 墓碑)');
-  log('本地状态段', statusRanges.length);
-
-  // 7. Quick write-readability probe at the user's data path
-  if(fbRef){
+  // 6. User data path — use REST shallow query to avoid downloading all entries
+  if(username){
     try {
       const t0 = Date.now();
-      const snap = await fbRef.once('value');
-      log('数据路径读取', '✅ '+(Date.now()-t0)+'ms · '+(snap.exists()?'有数据':'空'));
-    } catch(e){
-      const m = String(e.message||e);
-      if(/permission|denied/i.test(m)) log('数据路径读取', '❌ PERMISSION_DENIED · 检查 Firebase 规则');
-      else log('数据路径读取', '❌ '+m.slice(0,80));
-    }
-    // Try a no-op write at the actual user data path (so result reflects real rules)
+      const base = coupleId ? 'daily_rooms/'+coupleId : 'daily_private/'+username;
+      const ctrl = new AbortController();
+      const to = setTimeout(()=>ctrl.abort(), 5000);
+      const r = await fetch('https://daily-app-a4ff9-default-rtdb.asia-southeast1.firebasedatabase.app/'+base+'/entries.json?shallow=true', {cache:'no-store', signal:ctrl.signal});
+      clearTimeout(to);
+      if(r.ok){
+        const keys = await r.json();
+        const count = keys && typeof keys==='object' ? Object.keys(keys).length : 0;
+        log('云端条目数', '✅ '+count+' 条 ('+(Date.now()-t0)+'ms)');
+      } else {
+        log('云端条目数', '❌ HTTP '+r.status);
+        if(r.status === 401) log('  → 提示', 'Rules 禁止读取');
+      }
+    } catch(e){ log('云端条目数', '失败: '+(e.message||e)); }
+  }
+
+  // 7. Write probe — small no-op write at user's actual path
+  if(fbRef && username){
     try {
       const base = coupleId ? 'daily_rooms/'+coupleId : 'daily_private/'+username;
       const probeRef = fbDb.ref(base+'/_diag_probe');
       const t0 = Date.now();
-      await probeRef.set({t:Date.now()});
-      try { await probeRef.remove(); } catch{}
+      await _withTimeout(probeRef.set({t:Date.now()}), 5000, 'write');
+      try { await _withTimeout(probeRef.remove(), 3000, 'remove'); } catch{}
       log('写入探测', '✅ '+(Date.now()-t0)+'ms');
     } catch(e){
       const m = String(e.message||e);
       if(/permission|denied/i.test(m)) log('写入探测', '❌ PERMISSION_DENIED · Rules 拒绝');
+      else if(/timeout/i.test(m)) log('写入探测', '⏱️ '+m+'（多半是 WebSocket 没建起来）');
       else log('写入探测', '❌ '+m.slice(0,80));
     }
   }
 
-  out.textContent = lines.join('\n');
+  log('---', '诊断完成');
 }
 
 function copyDiag(){
