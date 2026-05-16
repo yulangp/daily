@@ -1523,8 +1523,18 @@ async function doMigrateSetPwd(){
   const acct = pendingMigrateName || username;
   const rec = await buildPwdRecord(pwd);
   try{
-    const existingNick = nickname || acct;
-    await fbUsersRef.child(acct).set({...rec, nickname:existingNick, createdAt:new Date().toISOString()});
+    // Preserve any pre-existing fields (coupleId/partner/createdAt etc.) by
+    // reading first and merging. Using .set() blindly would wipe couple links.
+    const snap = await fbUsersRef.child(acct).once('value');
+    const existing = snap.val() || {};
+    const existingNick = nickname || existing.nickname || acct;
+    const next = {
+      ...existing,
+      ...rec,
+      nickname: existingNick,
+      createdAt: existing.createdAt || new Date().toISOString()
+    };
+    await fbUsersRef.child(acct).set(next);
     saveLocalCred(acct, {algo:PBKDF2_ALGO, salt:rec.pwdSalt, iter:rec.pwdIter, hash:rec.pwdHash});
     nickname = existingNick;
     localStorage.setItem('daily_nickname', existingNick);
