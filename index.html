@@ -619,6 +619,8 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
         </div>
 
         <div style="margin-top:14px;">
+          <button class="action-btn" onclick="openDiag()"><span class="aicon">🔧</span>同步诊断</button>
+          <button class="action-btn" onclick="reconnectFirebase()"><span class="aicon">🔄</span>重新连接</button>
           <button class="action-btn" onclick="openChangePwd()"><span class="aicon">🔑</span>修改密码</button>
           <button class="action-btn logout-red" onclick="doLogout()"><span class="aicon">🚪</span>退出登录</button>
         </div>
@@ -811,6 +813,23 @@ textarea.input-field{resize:none;min-height:78px;line-height:1.55;}
   </div>
 </div>
 
+<!-- DIAGNOSTICS MODAL -->
+<div class="modal-bg hidden" id="modalDiag">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">🔧 同步诊断</div>
+    <div style="font-size:.78rem;color:var(--mid);line-height:1.55;margin-bottom:12px;background:rgba(255,248,244,.8);border-radius:10px;padding:10px 12px;">
+      检查 Service Worker、缓存版本、Firebase 连接与权限。点击"运行诊断"开始。
+    </div>
+    <pre id="diagOutput" style="background:#1f1714;color:#fce8d6;font-family:'SF Mono',Menlo,monospace;font-size:.72rem;line-height:1.55;border-radius:10px;padding:12px;white-space:pre-wrap;word-break:break-all;max-height:50vh;overflow-y:auto;margin-bottom:12px;">点击下方按钮开始…</pre>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="closeM('modalDiag')">关闭</button>
+      <button class="btn-secondary" onclick="copyDiag()">复制结果</button>
+      <button class="btn-primary" onclick="runDiag()">运行诊断</button>
+    </div>
+  </div>
+</div>
+
 <!-- LIGHTBOX -->
 <div id="lightbox" class="hidden">
   <button id="lightboxClose" onclick="closeLightbox()">✕</button>
@@ -926,6 +945,19 @@ let vY = new Date().getFullYear(), vM = new Date().getMonth();
 let selDay = null, selMood = MOODS[0], curTab = 'calendar';
 let curMoodCat = '常用';
 let fbApp = null, fbDb = null, fbRef = null, fbStatusRef = null, fbUsersRef = null, fbListener = null, fbStatusListener = null;
+let fbConnRef = null;
+let _connWatchdog = null;
+const CONN_TIMEOUT_MS = 10000;
+function _armConnWatchdog(){
+  clearTimeout(_connWatchdog);
+  _connWatchdog = setTimeout(() => {
+    const label = document.getElementById('syncLabel');
+    if(label && (label.textContent === '连接中…' || label.textContent === '同步中…')){
+      setSyncStatus('offline','⚠️ 无法连接');
+      toast('云端连接超时 · 点击「我的」→ 🔧 同步诊断');
+    }
+  }, CONN_TIMEOUT_MS);
+}
 let pendingImgs = [];
 let pickedStatus = 'together';
 let authMode = 'login'; // 'login' or 'register'
@@ -1056,6 +1088,26 @@ function initFirebase(config) {
     }
     setSyncStatus('syncing', '连接中…');
 
+    // ── Connection truth-source: Firebase's own .info/connected node ──
+    // We previously inferred online state from listener firings, which lies
+    // when the WebSocket can't establish (status stuck at "连接中"). The
+    // .info/connected ref flips to true the moment a transport is up.
+    try {
+      if(fbConnRef) fbConnRef.off();
+    } catch{}
+    fbConnRef = fbDb.ref('.info/connected');
+    fbConnRef.on('value', s => {
+      const connected = !!s.val();
+      if(connected){
+        clearTimeout(_connWatchdog);
+        if(!isInWrite()) setSyncStatus('online','已同步');
+      } else {
+        setSyncStatus('syncing','连接中…');
+        _armConnWatchdog();
+      }
+    });
+    _armConnWatchdog();
+
     // Also check Firebase for couple info (in case linked from another device)
     if(!coupleId && username){
       fbUsersRef.child(username).once('value').then(snap=>{
@@ -1167,7 +1219,19 @@ function writeToFirebase(list) {
   setSyncStatus('syncing', '同步中…');
   fbRef.set(obj)
     .then(() => { if(window._unlockSync) window._unlockSync(); setSyncStatus('online', '已同步'); })
-    .catch(err => { if(window._unlockSync) window._unlockSync(); console.error(err); toast('⚠️ 同步失败'); setSyncStatus('offline','同步失败'); });
+    .catch(err => {
+      if(window._unlockSync) window._unlockSync();
+      console.error('writeToFirebase failed:', err);
+      const msg = String(err && err.message || err);
+      if(/PERMISSION_DENIED|permission_denied/i.test(msg)){
+        toast('⚠️ 写入被规则拒绝 · 检查 Firebase Rules');
+      } else if(/network|disconnect/i.test(msg)){
+        toast('⚠️ 网络断开');
+      } else {
+        toast('⚠️ 同步失败: ' + msg.slice(0,60));
+      }
+      setSyncStatus('offline','同步失败');
+    });
 }
 
 function writeStatusToFirebase() {
@@ -2492,6 +2556,129 @@ function toggleAutoBackup(){
   else{clearTimeout(_gistDebounceTimer);toast('已关闭自动备份');}
 }
 
+// ══ DIAGNOSTICS ═══════════════════════════════════════════════
+function openDiag(){
+  document.getElementById('diagOutput').textContent='点击下方按钮开始…';
+  openM('modalDiag');
+}
+
+async function runDiag(){
+  const out = document.getElementById('diagOutput');
+  const lines = [];
+  const log = (k,v) => lines.push((k+':').padEnd(22,' ') + v);
+  out.textContent = '运行中…';
+
+  // 1. Build/version markers
+  const csp = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  log('CSP 含 wss', csp && csp.content.includes('wss://') ? '✅ 是' : '❌ 否（旧版本！）');
+  log('用户代理', (navigator.userAgent||'').slice(0,80));
+  log('在线状态', navigator.onLine ? '✅ online' : '❌ offline');
+
+  // 2. Service Worker
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    log('SW 注册数', regs.length);
+    regs.forEach((r,i)=>{
+      const sw = r.active || r.waiting || r.installing;
+      log('  SW['+i+'] 状态', sw ? sw.state : '无');
+      log('  SW['+i+'] URL', sw ? sw.scriptURL : '无');
+    });
+    const names = await caches.keys();
+    log('缓存版本', names.join(', ') || '无');
+    log('正确缓存', names.includes('daily-v4') ? '✅ daily-v4' : ('⚠️ '+(names[0]||'无')));
+  } catch(e){ log('SW 检查', '失败 '+e.message); }
+
+  // 3. Firebase SDK state
+  log('Firebase 已加载', (window.firebase ? '✅' : '❌'));
+  log('fbApp', fbApp ? '✅ 已初始化' : '❌');
+  log('fbRef 路径', fbRef ? fbRef.toString() : '❌ null');
+  log('待写入计数', (typeof window._lockSync === 'function') ? '（写锁就绪）' : '⚠️ 未挂载');
+
+  // 4. Live connection state from Firebase
+  if(fbDb){
+    try {
+      const snap = await fbDb.ref('.info/connected').once('value');
+      log('.info/connected', snap.val() ? '✅ true（实时通道已建立）' : '❌ false（无连接）');
+      const offset = await fbDb.ref('.info/serverTimeOffset').once('value');
+      log('服务器时间偏移', offset.val() + 'ms');
+    } catch(e){ log('.info 读取', '失败: '+e.message); }
+  }
+
+  // 5. REST API direct probe (bypasses SDK)
+  try {
+    const t0 = Date.now();
+    const r = await fetch('https://daily-app-a4ff9-default-rtdb.asia-southeast1.firebasedatabase.app/.json?shallow=true', {cache:'no-store'});
+    log('REST 探测', 'HTTP '+r.status+' ('+(Date.now()-t0)+'ms)');
+    if(r.status === 401) log('  → 提示', '需要鉴权');
+    if(r.status === 423) log('  → 提示', '数据库已锁');
+  } catch(e){ log('REST 探测', '失败: '+e.message); }
+
+  // 6. Account / data state
+  log('当前账号', username || '未登录');
+  log('情侣绑定', coupleId ? coupleId : '未绑定');
+  log('本地条目', entries.length + ' (含 ' + entries.filter(e=>e.deleted).length + ' 墓碑)');
+  log('本地状态段', statusRanges.length);
+
+  // 7. Quick write-readability probe at the user's data path
+  if(fbRef){
+    try {
+      const t0 = Date.now();
+      const snap = await fbRef.once('value');
+      log('数据路径读取', '✅ '+(Date.now()-t0)+'ms · '+(snap.exists()?'有数据':'空'));
+    } catch(e){
+      const m = String(e.message||e);
+      if(/permission|denied/i.test(m)) log('数据路径读取', '❌ PERMISSION_DENIED · 检查 Firebase 规则');
+      else log('数据路径读取', '❌ '+m.slice(0,80));
+    }
+    // Try a no-op write at the actual user data path (so result reflects real rules)
+    try {
+      const base = coupleId ? 'daily_rooms/'+coupleId : 'daily_private/'+username;
+      const probeRef = fbDb.ref(base+'/_diag_probe');
+      const t0 = Date.now();
+      await probeRef.set({t:Date.now()});
+      try { await probeRef.remove(); } catch{}
+      log('写入探测', '✅ '+(Date.now()-t0)+'ms');
+    } catch(e){
+      const m = String(e.message||e);
+      if(/permission|denied/i.test(m)) log('写入探测', '❌ PERMISSION_DENIED · Rules 拒绝');
+      else log('写入探测', '❌ '+m.slice(0,80));
+    }
+  }
+
+  out.textContent = lines.join('\n');
+}
+
+function copyDiag(){
+  const text = document.getElementById('diagOutput').textContent;
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(text).then(()=>toast('📋 已复制诊断结果'));
+  } else {
+    const ta=document.createElement('textarea');
+    ta.value=text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    toast('📋 已复制');
+  }
+}
+
+function reconnectFirebase(){
+  toast('🔄 正在重新连接…');
+  try {
+    // Detach existing listeners and connection
+    if(fbListener && fbRef) fbRef.off('value', fbListener);
+    if(fbStatusListener && fbStatusRef) fbStatusRef.off('value', fbStatusListener);
+    if(fbConnRef) fbConnRef.off();
+    fbListener = null; fbStatusListener = null;
+    if(fbDb){
+      try { fbDb.goOffline(); fbDb.goOnline(); } catch{}
+    }
+    // Full re-init
+    initFirebase(FIREBASE_CONFIG);
+  } catch(e){
+    console.error(e);
+    toast('⚠️ 重连失败: '+e.message);
+  }
+}
+
 // ══ MODAL HELPERS ═════════════════════════════════════════════
 function openM(id){ document.getElementById(id).classList.remove('hidden'); }
 function closeM(id){ document.getElementById(id).classList.add('hidden'); }
@@ -2532,21 +2719,32 @@ if(username){
 
 // ══ SERVICE WORKER REGISTRATION ══════════════════════════════
 if ('serviceWorker' in navigator) {
+  // When a new SW takes control (after skipWaiting + activate), reload once
+  // so the page picks up the new HTML/JS. This is what unsticks users on
+  // stale caches without them having to manually clear anything.
+  let _swReloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if(_swReloaded) return;
+    _swReloaded = true;
+    window.location.reload();
+  });
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(reg => {
       console.log('SW registered:', reg.scope);
-      // Check for updates every 30 minutes
-      setInterval(() => reg.update(), 30 * 60 * 1000);
-      // Notify user when new version is available
+      // Check for updates every 10 minutes — faster recovery from bad releases
+      setInterval(() => reg.update(), 10 * 60 * 1000);
+      // Also check on tab focus so returning users get fresh code quickly
+      document.addEventListener('visibilitychange', () => {
+        if(!document.hidden) reg.update();
+      });
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         newWorker.addEventListener('statechange', () => {
           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            // New version available
-            if (confirm('daily 有新版本可用，是否立即更新？')) {
-              newWorker.postMessage({ type: 'SKIP_WAITING' });
-              window.location.reload();
-            }
+            // New version is installed and waiting. Activate it silently;
+            // the controllerchange listener above will reload the page.
+            newWorker.postMessage({ type: 'SKIP_WAITING' });
           }
         });
       });

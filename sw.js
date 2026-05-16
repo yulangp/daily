@@ -9,7 +9,7 @@
 // IMPORTANT: bump CACHE_NAME whenever you change the offline-fallback contract
 // (cache layout, file list). For routine index.html edits the network-first
 // strategy already gives online users fresh content.
-const CACHE_NAME = 'daily-v3';
+const CACHE_NAME = 'daily-v4';
 const APP_SHELL = [
   './',
   './index.html',
