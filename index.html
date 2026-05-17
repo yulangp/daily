@@ -960,32 +960,9 @@ function _armConnWatchdog(){
     }
   }, CONN_TIMEOUT_MS);
 }
-// Exponential backoff auto-reconnect: 2s, 4s, 8s, 16s, 30s, 60s, 60s, ...
-function _scheduleAutoReconnect(){
-  if(_autoReconnectTimer) return;
-  if(!navigator.onLine) return; // pointless when fully offline
-  _reconnectAttempt++;
-  const delay = Math.min(2000 * Math.pow(2, _reconnectAttempt-1), MAX_RECONNECT_DELAY);
-  _autoReconnectTimer = setTimeout(() => {
-    _autoReconnectTimer = null;
-    if(fbDb && username){
-      try { fbDb.goOffline(); fbDb.goOnline(); } catch{}
-    }
-  }, delay);
-}
-// Forcibly reconnect when the tab becomes visible again — Safari/iOS often
-// drop the WebSocket on backgrounding without auto-recovering.
-document.addEventListener('visibilitychange', () => {
-  if(!document.hidden && fbDb && username){
-    try { fbDb.goOffline(); fbDb.goOnline(); } catch{}
-  }
-});
-// Browser-reported online: kick the SDK to try again.
-window.addEventListener('online', () => {
-  if(fbDb && username){
-    try { fbDb.goOffline(); fbDb.goOnline(); } catch{}
-  }
-});
+// REST-based sync handles reconnection via the poll loop; the WSS-era
+// goOffline/goOnline retry mechanism is no longer needed.
+function _scheduleAutoReconnect(){ /* no-op: REST poll handles recovery */ }
 let pendingImgs = [];
 let pickedStatus = 'together';
 let authMode = 'login'; // 'login' or 'register'
@@ -1179,53 +1156,14 @@ function initFirebase(config) {
       return _pendingWrites > 0;
     }
 
-    fbListener = fbRef.on('value', snapshot => {
-      if(isInWrite()){ setSyncStatus('online','已同步'); return; } // Skip during writes/echo
-      const data = snapshot.val();
-      if (data) {
-        const remote = typeof data === 'object' && !Array.isArray(data)
-          ? Object.values(data) : (Array.isArray(data) ? data : []);
-        const remoteClean = remote.filter(e => e && e.id && e.date);
-        // MERGE instead of replace — union of local + remote, deduplicated by id
-        const merged = dedupEntries([...entries, ...remoteClean]);
-        entries = merged;
-        saveLocal();
-        // If local had entries that remote didn't, push them back
-        if(merged.length > remoteClean.length){
-          writeToFirebase(entries);
-        }
-      } else if (entries.length) {
-        // Remote is empty, push local up
-        writeToFirebase(entries);
-      }
-      renderAll();
-      setSyncStatus('online', '已同步');
-    }, err => {
-      console.error(err);
-      setSyncStatus('offline', '同步失败');
-      toast('⚠️ 云端连接失败，使用本地数据');
-      loadLocal(); renderAll();
-    });
-
-    // Status ranges listener — same merge strategy
-    fbStatusListener = fbStatusRef.on('value', snapshot => {
-      if(isInWrite()){ return; }
-      const data = snapshot.val();
-      if (data) {
-        const remote = typeof data === 'object' && !Array.isArray(data)
-          ? Object.values(data) : (Array.isArray(data) ? data : []);
-        const remoteClean = remote.filter(s => s && s.from && s.to && s.status);
-        const merged = dedupStatusRanges([...statusRanges, ...remoteClean]);
-        statusRanges = merged;
-        saveLocalStatus();
-        if(merged.length > remoteClean.length){
-          writeStatusToFirebase();
-        }
-      } else if (statusRanges.length) {
-        writeStatusToFirebase();
-      }
-      renderAll();
-    }, err => { console.error(err); loadLocalStatus(); });
+    // Realtime sync is handled by REST polling (see startPolling below) instead
+    // of fbRef.on('value', ...). Some networks (proxy/firewall, mainland-China
+    // setups) silently break the SDK's WebSocket transport while leaving plain
+    // HTTPS REST traffic alone. REST polling sacrifices ~5s of latency but
+    // works through any HTTP-capable network.
+    fbListener = null;
+    fbStatusListener = null;
+    startPolling();
 
     // ── Expose lock functions for write operations ──
     window._lockSync = lockSync;
@@ -1233,47 +1171,220 @@ function initFirebase(config) {
   } catch(e) { console.error(e); setSyncStatus('offline', '离线'); }
 }
 
-function writeToFirebase(list) {
-  if (!fbRef) return;
-  const deduped = dedupEntries(list);
+// ══ REST-BASED SYNC ═══════════════════════════════════════════
+// All data sync runs over plain HTTPS REST instead of the SDK's WebSocket.
+// The SDK is still used for auth/couple operations because those are one-shot
+// calls that work via the SDK's REST fallback.
+const FB_DATABASE_URL = FIREBASE_CONFIG.databaseURL;
+let _pollTimer = null;
+let _pollRunning = false;
+let _pendingPush = null;  // {entries:bool, status:bool} for debounced pushes
+let _pushDebounceTimer = null;
+const POLL_INTERVAL_VISIBLE_MS = 5000;
+const POLL_INTERVAL_HIDDEN_MS = 30000;
+const PUSH_DEBOUNCE_MS = 400;
+
+function _restUrl(path){ return `${FB_DATABASE_URL}/${path}.json`; }
+
+async function _restGet(path, {timeoutMs=8000}={}){
+  const ctrl = new AbortController();
+  const to = setTimeout(()=>ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(_restUrl(path), {cache:'no-store', signal:ctrl.signal});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const txt = await r.text();
+    return txt === 'null' ? null : JSON.parse(txt);
+  } finally { clearTimeout(to); }
+}
+
+async function _restPut(path, data, {timeoutMs=15000}={}){
+  const ctrl = new AbortController();
+  const to = setTimeout(()=>ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(_restUrl(path), {
+      method:'PUT', cache:'no-store', signal:ctrl.signal,
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+    if(!r.ok){
+      let body = ''; try { body = await r.text(); } catch{}
+      throw new Error(`HTTP ${r.status} ${body.slice(0,120)}`);
+    }
+    return await r.json();
+  } finally { clearTimeout(to); }
+}
+
+function _dataPaths(){
+  if(!username) return null;
+  const base = coupleId ? `daily_rooms/${encodeURIComponent(coupleId)}`
+                        : `daily_private/${encodeURIComponent(username)}`;
+  return { entries: `${base}/entries`, status: `${base}/status_ranges` };
+}
+
+// Compute a tiny signature for change detection so we avoid re-rendering when
+// nothing's new. Includes tombstone state and createdAt so edits/deletes count.
+function _entriesSig(arr){
+  return arr.length + '|' + arr.map(e => e.id + (e.deleted?'_T':'') + (e.createdAt||'')).sort().join(',');
+}
+function _statusSig(arr){
+  return arr.length + '|' + arr.map(s => s.from+s.to+s.status).sort().join(',');
+}
+let _lastEntriesSig = '';
+let _lastStatusSig = '';
+
+async function pollSyncOnce(){
+  const p = _dataPaths();
+  if(!p) return;
+  if(_pollRunning) return;
+  _pollRunning = true;
+  let changed = false;
+  let networkOk = true;
+  try {
+    setSyncStatus('syncing','同步中…');
+    const [eData, sData] = await Promise.allSettled([
+      _restGet(p.entries),
+      _restGet(p.status)
+    ]);
+
+    // Entries
+    if(eData.status === 'fulfilled'){
+      const data = eData.value;
+      const remote = data && typeof data==='object' && !Array.isArray(data)
+        ? Object.values(data) : (Array.isArray(data) ? data : []);
+      const remoteClean = remote.filter(e=>e&&e.id&&e.date);
+      const merged = dedupEntries([...entries, ...remoteClean]);
+      const sig = _entriesSig(merged);
+      if(sig !== _lastEntriesSig){
+        entries = merged; saveLocal(); changed = true;
+        _lastEntriesSig = sig;
+      }
+      // If local has more (tombstones / not-yet-uploaded entries), push back
+      if(merged.length > remoteClean.length) scheduleEntriesPush();
+    } else {
+      networkOk = false;
+      console.warn('poll entries failed:', eData.reason);
+    }
+
+    // Status ranges
+    if(sData.status === 'fulfilled'){
+      const data = sData.value;
+      const remote = data && typeof data==='object' && !Array.isArray(data)
+        ? Object.values(data) : (Array.isArray(data) ? data : []);
+      const remoteClean = remote.filter(s=>s&&s.from&&s.to&&s.status);
+      const merged = dedupStatusRanges([...statusRanges, ...remoteClean]);
+      const sig = _statusSig(merged);
+      if(sig !== _lastStatusSig){
+        statusRanges = merged; saveLocalStatus(); changed = true;
+        _lastStatusSig = sig;
+      }
+    } else {
+      networkOk = false;
+      console.warn('poll status failed:', sData.reason);
+    }
+
+    if(changed) renderAll();
+    setSyncStatus(networkOk?'online':'offline', networkOk?'已同步':'同步失败');
+  } catch(e){
+    console.error('Poll failed:', e);
+    setSyncStatus('offline','⚠️ 同步失败');
+  } finally { _pollRunning = false; }
+}
+
+function _scheduleNextPoll(){
+  const delay = document.hidden ? POLL_INTERVAL_HIDDEN_MS : POLL_INTERVAL_VISIBLE_MS;
+  clearTimeout(_pollTimer);
+  _pollTimer = setTimeout(async () => {
+    await pollSyncOnce();
+    _scheduleNextPoll();
+  }, delay);
+}
+
+function startPolling(){
+  stopPolling();
+  // Immediate first poll, then schedule recurring
+  pollSyncOnce().finally(_scheduleNextPoll);
+}
+function stopPolling(){
+  clearTimeout(_pollTimer); _pollTimer = null;
+}
+
+// Push with small debounce so a flurry of saves coalesces into one PUT
+function scheduleEntriesPush(){
+  _pendingPush = _pendingPush || {entries:false,status:false};
+  _pendingPush.entries = true;
+  _kickPushDebounce();
+}
+function scheduleStatusPush(){
+  _pendingPush = _pendingPush || {entries:false,status:false};
+  _pendingPush.status = true;
+  _kickPushDebounce();
+}
+function _kickPushDebounce(){
+  clearTimeout(_pushDebounceTimer);
+  _pushDebounceTimer = setTimeout(flushPushes, PUSH_DEBOUNCE_MS);
+}
+async function flushPushes(){
+  const p = _dataPaths(); if(!p || !_pendingPush) return;
+  const job = _pendingPush; _pendingPush = null;
+  if(job.entries) await _pushEntriesNow(p);
+  if(job.status)  await _pushStatusNow(p);
+}
+
+async function _pushEntriesNow(p){
   const obj = {};
+  const deduped = dedupEntries(entries);
   deduped.forEach(e => { obj[e.id] = e; });
-  // Pre-flight size check — Firebase RTDB rejects writes over ~16 MB.
-  let payloadSize = 0;
-  try { payloadSize = new Blob([JSON.stringify(obj)]).size; } catch {}
-  if(payloadSize > TOTAL_WRITE_LIMIT_BYTES){
-    toast(`⚠️ 数据 ${_humanSize(payloadSize)} 过大，跳过云端同步`);
+  let size = 0;
+  try { size = new Blob([JSON.stringify(obj)]).size; } catch {}
+  if(size > TOTAL_WRITE_LIMIT_BYTES){
+    toast(`⚠️ 数据 ${_humanSize(size)} 过大，跳过云端同步`);
     setSyncStatus('offline','本地保存');
     return;
   }
-  if(window._lockSync) window._lockSync();
-  setSyncStatus('syncing', '同步中…');
-  fbRef.set(obj)
-    .then(() => { if(window._unlockSync) window._unlockSync(); setSyncStatus('online', '已同步'); })
-    .catch(err => {
-      if(window._unlockSync) window._unlockSync();
-      console.error('writeToFirebase failed:', err);
-      const msg = String(err && err.message || err);
-      if(/PERMISSION_DENIED|permission_denied/i.test(msg)){
-        toast('⚠️ 写入被规则拒绝 · 检查 Firebase Rules');
-      } else if(/network|disconnect/i.test(msg)){
-        toast('⚠️ 网络断开');
-      } else {
-        toast('⚠️ 同步失败: ' + msg.slice(0,60));
-      }
-      setSyncStatus('offline','同步失败');
-    });
+  setSyncStatus('syncing','同步中…');
+  try {
+    await _restPut(p.entries, Object.keys(obj).length ? obj : null);
+    _lastEntriesSig = _entriesSig(deduped); // remember what we just wrote
+    setSyncStatus('online','已同步');
+  } catch(err){
+    console.error('push entries failed:', err);
+    const m = String(err.message||err);
+    if(/401|permission/i.test(m)) toast('⚠️ 写入被规则拒绝');
+    else if(/abort|timeout/i.test(m)) toast('⚠️ 写入超时');
+    else toast('⚠️ 写入失败: '+m.slice(0,60));
+    setSyncStatus('offline','同步失败');
+  }
+}
+async function _pushStatusNow(p){
+  const obj = {};
+  const deduped = dedupStatusRanges(statusRanges);
+  deduped.forEach((s, i) => { obj['sr_'+i] = s; });
+  try {
+    await _restPut(p.status, Object.keys(obj).length ? obj : null);
+    _lastStatusSig = _statusSig(deduped);
+  } catch(err){
+    console.error('push status failed:', err);
+  }
 }
 
+// React to tab visibility — switch poll cadence and immediately resync
+document.addEventListener('visibilitychange', () => {
+  if(!document.hidden && username){
+    pollSyncOnce();
+    _scheduleNextPoll();
+  }
+});
+window.addEventListener('online', () => { if(username) pollSyncOnce(); });
+
+// Compatibility shims — existing call sites (saveEntry, delete handler, import,
+// couple link, etc.) call writeToFirebase / writeStatusToFirebase. We keep the
+// names but route them to the REST debounced push instead of the SDK.
+function writeToFirebase(list) {
+  if(list && list !== entries) entries = list;
+  scheduleEntriesPush();
+}
 function writeStatusToFirebase() {
-  if (!fbStatusRef) return;
-  if(window._lockSync) window._lockSync();
-  const deduped = dedupStatusRanges(statusRanges);
-  const obj = {};
-  deduped.forEach((s, i) => { obj['sr_'+i] = s; });
-  fbStatusRef.set(obj)
-    .then(()=>{ if(window._unlockSync) window._unlockSync(); })
-    .catch(err => { if(window._unlockSync) window._unlockSync(); console.error(err); });
+  scheduleStatusPush();
 }
 
 // Deletions are handled by writing a tombstone (deleted:true) into the entries
@@ -1753,6 +1864,8 @@ function doLogout() {
   if (fbListener && fbRef) fbRef.off('value', fbListener);
   if (fbStatusListener && fbStatusRef) fbStatusRef.off('value', fbStatusListener);
   fbListener = null; fbStatusListener = null;
+  stopPolling();
+  _lastEntriesSig = ''; _lastStatusSig = '';
   hide('screen-app'); show('screen-login');
   document.getElementById('loginInput').value = '';
   document.getElementById('loginPassword').value = '';
@@ -2629,20 +2742,21 @@ async function runDiag(){
     log('正确缓存', names.includes('daily-v4') ? '✅ daily-v4' : ('⚠️ '+(names.join(',')||'无')));
   } catch(e){ log('SW 检查', '失败 '+e.message); }
 
-  // 3. Firebase SDK state (instant)
+  // 3. Firebase SDK + sync mode (instant)
   log('Firebase SDK', (window.firebase ? '✅' : '❌'));
   log('fbApp', fbApp ? '✅' : '❌');
-  log('fbRef 路径', fbRef ? fbRef.toString().replace(/^https?:\/\/[^/]+/,'') : '❌');
+  log('同步模式', _pollTimer ? '✅ REST 轮询（不依赖 WS）' : '⚠️ 轮询未启动');
+  log('轮询间隔', document.hidden ? '30s（标签隐藏）' : '5s');
   log('当前账号', username || '未登录');
   log('情侣绑定', coupleId || '未绑定');
   log('本地条目', entries.length + ' (墓碑 ' + entries.filter(e=>e.deleted).length + ')');
 
-  // 4. Firebase connection — short timeout, this is the critical signal
+  // 4. Firebase WSS connection — informational only; REST sync works regardless
   if(fbDb){
     try {
       const snap = await _withTimeout(fbDb.ref('.info/connected').once('value'), 3000, '.info/connected');
-      log('.info/connected', snap.val() ? '✅ true（实时通道已建立）' : '❌ false（无连接）');
-    } catch(e){ log('.info/connected', '⏱️ '+e.message); }
+      log('WSS 状态', snap.val() ? '✅ true（不需要也无妨）' : '❌ false（已用 REST 兜底）');
+    } catch(e){ log('WSS 状态', '⏱️ '+e.message+'（REST 兜底中，无影响）'); }
   }
 
   // 5. REST API direct probe (bypasses SDK) — uses shallow=true so payload is tiny
@@ -2677,20 +2791,31 @@ async function runDiag(){
     } catch(e){ log('云端条目数', '失败: '+(e.message||e)); }
   }
 
-  // 7. Write probe — small no-op write at user's actual path
-  if(fbRef && username){
+  // 7. REST write probe — matches the actual sync path the app uses
+  if(username){
     try {
-      const base = coupleId ? 'daily_rooms/'+coupleId : 'daily_private/'+username;
-      const probeRef = fbDb.ref(base+'/_diag_probe');
+      const base = coupleId ? 'daily_rooms/'+encodeURIComponent(coupleId)
+                            : 'daily_private/'+encodeURIComponent(username);
       const t0 = Date.now();
-      await _withTimeout(probeRef.set({t:Date.now()}), 5000, 'write');
-      try { await _withTimeout(probeRef.remove(), 3000, 'remove'); } catch{}
-      log('写入探测', '✅ '+(Date.now()-t0)+'ms');
+      const ctrl = new AbortController();
+      const to = setTimeout(()=>ctrl.abort(), 7000);
+      const r = await fetch(`${FB_DATABASE_URL}/${base}/_diag_probe.json`, {
+        method:'PUT', cache:'no-store', signal:ctrl.signal,
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({t:Date.now(),ua:'diag'})
+      });
+      clearTimeout(to);
+      if(r.ok){
+        log('REST 写入探测', '✅ '+(Date.now()-t0)+'ms');
+        // Cleanup
+        try { await fetch(`${FB_DATABASE_URL}/${base}/_diag_probe.json`, {method:'DELETE', cache:'no-store'}); } catch{}
+      } else {
+        log('REST 写入探测', '❌ HTTP '+r.status);
+        if(r.status === 401) log('  → 提示', 'Rules 拒绝写入');
+      }
     } catch(e){
       const m = String(e.message||e);
-      if(/permission|denied/i.test(m)) log('写入探测', '❌ PERMISSION_DENIED · Rules 拒绝');
-      else if(/timeout/i.test(m)) log('写入探测', '⏱️ '+m+'（多半是 WebSocket 没建起来）');
-      else log('写入探测', '❌ '+m.slice(0,80));
+      log('REST 写入探测', '❌ '+m.slice(0,80));
     }
   }
 
@@ -2710,18 +2835,11 @@ function copyDiag(){
 }
 
 function reconnectFirebase(){
-  toast('🔄 正在重新连接…');
+  toast('🔄 正在重新同步…');
   try {
-    // Detach existing listeners and connection
-    if(fbListener && fbRef) fbRef.off('value', fbListener);
-    if(fbStatusListener && fbStatusRef) fbStatusRef.off('value', fbStatusListener);
-    if(fbConnRef) fbConnRef.off();
-    fbListener = null; fbStatusListener = null;
-    if(fbDb){
-      try { fbDb.goOffline(); fbDb.goOnline(); } catch{}
-    }
-    // Full re-init
-    initFirebase(FIREBASE_CONFIG);
+    // REST mode: just force-poll. Reset signatures so re-render even if no change.
+    _lastEntriesSig = ''; _lastStatusSig = '';
+    pollSyncOnce();
   } catch(e){
     console.error(e);
     toast('⚠️ 重连失败: '+e.message);
