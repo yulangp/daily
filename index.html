@@ -1214,6 +1214,35 @@ async function _restPut(path, data, {timeoutMs=15000}={}){
   } finally { clearTimeout(to); }
 }
 
+// PATCH = Firebase update — merges partial object into existing children
+// without wiping unrelated keys. Use null values to remove children.
+async function _restPatch(path, partial, {timeoutMs=10000}={}){
+  const ctrl = new AbortController();
+  const to = setTimeout(()=>ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(_restUrl(path), {
+      method:'PATCH', cache:'no-store', signal:ctrl.signal,
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(partial)
+    });
+    if(!r.ok){
+      let body = ''; try { body = await r.text(); } catch{}
+      throw new Error(`HTTP ${r.status} ${body.slice(0,120)}`);
+    }
+    return await r.json();
+  } finally { clearTimeout(to); }
+}
+
+async function _restDelete(path, {timeoutMs=8000}={}){
+  const ctrl = new AbortController();
+  const to = setTimeout(()=>ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(_restUrl(path), {method:'DELETE', cache:'no-store', signal:ctrl.signal});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } finally { clearTimeout(to); }
+}
+
 function _dataPaths(){
   if(!username) return null;
   const base = coupleId ? `daily_rooms/${encodeURIComponent(coupleId)}`
@@ -1232,15 +1261,89 @@ function _statusSig(arr){
 let _lastEntriesSig = '';
 let _lastStatusSig = '';
 
+// Pull this user's record from Firebase and reconcile couple state with what's
+// stored locally. This is what lets unbind/bind on one device propagate to all
+// other devices of the same user — without it, devices only learn the state at
+// boot and then go silent.
+//
+// Three cases handled:
+//   1. Remote user record has couple fields that differ from local → adopt remote
+//   2. Local says bound but user record + couple record both missing → clear
+//      local (it's stale, often because a previous SDK write silently failed)
+//   3. No change → no-op
+function _clearCoupleLocal(){
+  coupleId = ''; partnerName = '';
+  localStorage.removeItem('daily_couple_id');
+  localStorage.removeItem('daily_partner');
+  localStorage.removeItem('daily_partner_nick');
+  localStorage.removeItem('daily_couple_since');
+}
+function _setCoupleLocal(cid, partner){
+  coupleId = cid; partnerName = partner;
+  localStorage.setItem('daily_couple_id', cid);
+  localStorage.setItem('daily_partner', partner);
+}
+async function refreshCoupleState(){
+  if(!username) return false;
+  let u;
+  try {
+    u = await _restGet(`daily_users/${encodeURIComponent(username)}`);
+  } catch(e){ return false; } // network/transient — try again next poll
+
+  const remoteCid = (u && u.coupleId) || '';
+  const remotePartner = (u && u.partner) || '';
+  if(remoteCid === coupleId && remotePartner === partnerName) return false;
+
+  // Case: local says bound, but user record reports unbound (or is missing).
+  // Before clearing local, sanity-check by also looking up the couple record.
+  // If the couple itself is gone, the binding really doesn't exist anymore.
+  if(coupleId && !remoteCid){
+    let coupleExists = false;
+    try {
+      const c = await _restGet(`daily_couples/${encodeURIComponent(coupleId)}`);
+      coupleExists = !!c;
+    } catch{}
+    if(coupleExists){
+      // The couple record still exists but our user record is missing — possibly
+      // a deleted/rebuilt account. Re-write the user side so we don't lose sync.
+      try {
+        await _restPatch(`daily_users/${encodeURIComponent(username)}`, {
+          coupleId, partner: partnerName
+        });
+      } catch(e){ console.warn('couple resync write failed:', e); }
+      return false;
+    }
+    // No couple record either — local state is truly stale. Clear it.
+    _clearCoupleLocal();
+    _lastEntriesSig = ''; _lastStatusSig = '';
+    if(curTab === 'profile') renderCoupleCard();
+    toast('已解除绑定（云端无此记录）');
+    return true;
+  }
+
+  // Case: remote has couple fields different from local — adopt remote
+  const wasInCouple = !!coupleId;
+  if(remoteCid) _setCoupleLocal(remoteCid, remotePartner);
+  else _clearCoupleLocal();
+  _lastEntriesSig = ''; _lastStatusSig = '';
+  if(curTab === 'profile') renderCoupleCard();
+  if(remoteCid && !wasInCouple) toast('💕 已同步情侣绑定');
+  else if(!remoteCid && wasInCouple) toast('已解除绑定（来自其他设备）');
+  return true;
+}
+
 async function pollSyncOnce(){
-  const p = _dataPaths();
-  if(!p) return;
   if(_pollRunning) return;
   _pollRunning = true;
   let changed = false;
   let networkOk = true;
   try {
     setSyncStatus('syncing','同步中…');
+    // First, reconcile couple state — bind/unbind from other devices
+    // could have changed which path our data lives at.
+    await refreshCoupleState();
+    const p = _dataPaths();
+    if(!p) return;
     const [eData, sData] = await Promise.allSettled([
       _restGet(p.entries),
       _restGet(p.status)
@@ -2261,14 +2364,14 @@ function renderCoupleCard(){
     document.getElementById('coupleName2').textContent=pdn;
     const since=localStorage.getItem('daily_couple_since');
     document.getElementById('coupleSince').textContent=since?`绑定于 ${since}`:'';
-    // Try to refresh partner nickname from Firebase
-    if(fbUsersRef&&partnerName){
-      fbUsersRef.child(partnerName).once('value').then(snap=>{
-        const u=snap.val();
-        if(u&&u.nickname&&u.nickname!==pdn){
-          localStorage.setItem('daily_partner_nick',u.nickname);
-          document.getElementById('coupleName2').textContent=u.nickname;
-          av2.textContent=u.nickname.charAt(0).toUpperCase();
+    // Try to refresh partner nickname via REST (works without WSS)
+    if(partnerName){
+      _restGet('daily_users/'+encodeURIComponent(partnerName)).then(u => {
+        if(u && u.nickname && u.nickname !== pdn){
+          localStorage.setItem('daily_partner_nick', u.nickname);
+          const el2 = document.getElementById('coupleName2');
+          if(el2) el2.textContent = u.nickname;
+          av2.textContent = u.nickname.charAt(0).toUpperCase();
         }
       }).catch(()=>{});
     }
@@ -2289,63 +2392,70 @@ function genCode(){
   return code;
 }
 
+let _invitePollTimer = null;
 async function openInviteModal(){
   if(coupleId){toast('你已绑定伴侣');return;}
   try{
-    if(!fbDb) initFirebaseLight();
-    const code=genCode();
-    const inviteRef=fbDb.ref('daily_invites/'+code);
-    await inviteRef.set({
-      from:username,
-      fromNick:nickname||username,
-      createdAt:new Date().toISOString(),
-      expiresAt:Date.now()+10*60*1000 // 10 min
+    const code = genCode();
+    const path = 'daily_invites/'+encodeURIComponent(code);
+    // Create invite via REST (works through proxies that break WSS)
+    await _restPut(path, {
+      from: username,
+      fromNick: nickname||username,
+      createdAt: new Date().toISOString(),
+      expiresAt: Date.now() + 10*60*1000
     });
-    currentInviteCode=code;
-    document.getElementById('inviteCodeDisplay').textContent=code;
+    currentInviteCode = code;
+    document.getElementById('inviteCodeDisplay').textContent = code;
     openM('modalInvite');
-    // Start countdown
-    let remaining=600;
+
+    // Countdown
+    let remaining = 600;
     clearInterval(inviteTimerInterval);
-    const timerEl=document.getElementById('inviteTimer');
-    inviteTimerInterval=setInterval(()=>{
+    const timerEl = document.getElementById('inviteTimer');
+    inviteTimerInterval = setInterval(() => {
       remaining--;
-      if(remaining<=0){
+      if(remaining <= 0){
         clearInterval(inviteTimerInterval);
-        timerEl.textContent='邀请码已过期，请重新生成';
-        inviteRef.remove().catch(()=>{});
+        timerEl.textContent = '邀请码已过期，请重新生成';
+        clearInterval(_invitePollTimer); _invitePollTimer = null;
+        _restDelete(path).catch(()=>{});
         return;
       }
-      const m=Math.floor(remaining/60), s=remaining%60;
-      timerEl.textContent=`剩余 ${m}:${String(s).padStart(2,'0')}`;
-    },1000);
-    timerEl.textContent='剩余 10:00';
-    // Also listen for someone using the code
-    inviteRef.on('value', snap=>{
-      const val=snap.val();
-      if(val && val.accepted){
-        clearInterval(inviteTimerInterval);
-        coupleId=val.coupleId;
-        partnerName=val.acceptedBy;
-        localStorage.setItem('daily_couple_id',coupleId);
-        localStorage.setItem('daily_partner',partnerName);
-        localStorage.setItem('daily_couple_since',new Date().toLocaleDateString('zh-CN'));
-        // Fetch partner nickname
-        fbUsersRef.child(partnerName).once('value').then(s=>{
-          const u=s.val();
-          if(u&&u.nickname) localStorage.setItem('daily_partner_nick',u.nickname);
-        }).catch(()=>{});
-        inviteRef.off('value');
-        inviteRef.remove().catch(()=>{});
-        closeM('modalInvite');
-        reInitWithCoupleRoom();
-        renderCoupleCard();
-        toast('💕 绑定成功！欢迎来到你们的共享空间');
-      }
-    });
-  }catch(e){
+      const m = Math.floor(remaining/60), s = remaining%60;
+      timerEl.textContent = `剩余 ${m}:${String(s).padStart(2,'0')}`;
+    }, 1000);
+    timerEl.textContent = '剩余 10:00';
+
+    // Poll for acceptance via REST every 2s (instead of SDK realtime listener)
+    clearInterval(_invitePollTimer);
+    _invitePollTimer = setInterval(async () => {
+      try {
+        const val = await _restGet(path);
+        if(val && val.accepted){
+          clearInterval(_invitePollTimer); _invitePollTimer = null;
+          clearInterval(inviteTimerInterval);
+          coupleId = val.coupleId;
+          partnerName = val.acceptedBy;
+          localStorage.setItem('daily_couple_id', coupleId);
+          localStorage.setItem('daily_partner', partnerName);
+          localStorage.setItem('daily_couple_since', new Date().toLocaleDateString('zh-CN'));
+          // Fetch partner nickname via REST
+          _restGet('daily_users/'+encodeURIComponent(partnerName)).then(u => {
+            if(u && u.nickname) localStorage.setItem('daily_partner_nick', u.nickname);
+          }).catch(()=>{});
+          _restDelete(path).catch(()=>{});
+          closeM('modalInvite');
+          _lastEntriesSig = ''; _lastStatusSig = '';
+          reInitWithCoupleRoom();
+          renderCoupleCard();
+          toast('💕 绑定成功！欢迎来到你们的共享空间');
+        }
+      } catch{} // swallow transient errors; next tick retries
+    }, 2000);
+  } catch(e){
     console.error(e);
-    toast('⚠️ 生成邀请码失败，请检查网络');
+    toast('⚠️ 生成邀请码失败: '+(e.message||e));
   }
 }
 
@@ -2379,38 +2489,51 @@ async function doLink(){
   if(!code||code.length!==8){errEl.textContent='请输入 8 位邀请码';errEl.style.display='block';return;}
 
   try{
-    if(!fbDb) initFirebaseLight();
-    const inviteRef=fbDb.ref('daily_invites/'+code);
-    const snap=await inviteRef.once('value');
-    const invite=snap.val();
-
+    // Read invite via REST so it works even when SDK WSS is broken
+    const invite = await _restGet('daily_invites/'+encodeURIComponent(code));
     if(!invite){errEl.textContent='邀请码不存在或已过期';errEl.style.display='block';return;}
     if(invite.accepted){errEl.textContent='邀请码已被使用';errEl.style.display='block';return;}
     if(invite.expiresAt && Date.now()>invite.expiresAt){
       errEl.textContent='邀请码已过期';errEl.style.display='block';
-      inviteRef.remove().catch(()=>{});
+      _restDelete('daily_invites/'+encodeURIComponent(code)).catch(()=>{});
       return;
     }
     if(invite.from===username){errEl.textContent='不能绑定自己哦~';errEl.style.display='block';return;}
 
-    // Create couple
-    const newCoupleId=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-    const coupleRef=fbDb.ref('daily_couples/'+newCoupleId);
-    await coupleRef.set({
-      user1:invite.from,
-      user2:username,
-      createdAt:new Date().toISOString()
-    });
+    const newCoupleId = Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
-    // Update both users
-    await fbUsersRef.child(invite.from).update({coupleId:newCoupleId, partner:username});
-    await fbUsersRef.child(username).update({coupleId:newCoupleId, partner:invite.from});
+    // Create couple record + update both users + mark invite — all via REST.
+    // Run in parallel; if any fails we still try to continue, the missing
+    // pieces will be reconciled by refreshCoupleState on next poll.
+    const results = await Promise.allSettled([
+      _restPut('daily_couples/'+encodeURIComponent(newCoupleId), {
+        user1: invite.from,
+        user2: username,
+        createdAt: new Date().toISOString()
+      }),
+      _restPatch('daily_users/'+encodeURIComponent(invite.from), {
+        coupleId: newCoupleId, partner: username
+      }),
+      _restPatch('daily_users/'+encodeURIComponent(username), {
+        coupleId: newCoupleId, partner: invite.from
+      }),
+      _restPatch('daily_invites/'+encodeURIComponent(code), {
+        accepted: true, acceptedBy: username, coupleId: newCoupleId
+      })
+    ]);
+    const failed = results.filter(r => r.status === 'rejected');
+    if(failed.length){
+      console.warn('some link writes failed:', failed);
+      // If the user-record updates both failed, the binding effectively didn't happen
+      if(results[1].status==='rejected' && results[2].status==='rejected'){
+        errEl.textContent='绑定失败: 写入被拒绝（检查 Rules）';
+        errEl.style.display='block';
+        return;
+      }
+    }
 
-    // Mark invite as accepted
-    await inviteRef.update({accepted:true, acceptedBy:username, coupleId:newCoupleId});
-
-    // Migrate existing data to couple room
-    await migrateDataToCoupleRoom(newCoupleId, invite.from);
+    // Migrate existing data to couple room (still uses SDK; best-effort)
+    try { await migrateDataToCoupleRoom(newCoupleId, invite.from); } catch(e){ console.warn('migrate failed:', e); }
 
     // Save locally
     coupleId=newCoupleId;
@@ -2421,13 +2544,13 @@ async function doLink(){
     localStorage.setItem('daily_couple_since',new Date().toLocaleDateString('zh-CN'));
 
     closeM('modalLink');
-    // Re-init with couple room
+    _lastEntriesSig = ''; _lastStatusSig = '';
     reInitWithCoupleRoom();
     renderCoupleCard();
     toast('💕 绑定成功！');
   }catch(e){
     console.error(e);
-    errEl.textContent='绑定失败: '+e.message;errEl.style.display='block';
+    errEl.textContent='绑定失败: '+(e.message||e);errEl.style.display='block';
   }
 }
 
@@ -2516,16 +2639,22 @@ function confirmUnlink(){
 }
 
 async function doUnlink(){
-  try{
-    if(!fbDb) initFirebaseLight();
-    if(coupleId){
-      // Remove couple record
-      await fbDb.ref('daily_couples/'+coupleId).remove().catch(()=>{});
-      // Clear coupleId on both users
-      await fbUsersRef.child(username).update({coupleId:null, partner:null}).catch(()=>{});
-      if(partnerName) await fbUsersRef.child(partnerName).update({coupleId:null, partner:null}).catch(()=>{});
+  // REST-based — bypasses SDK so it actually works through proxies that
+  // break WebSocket. Each call has its own timeout so a hung request can't
+  // freeze the unlink flow.
+  const oldCid = coupleId, oldPartner = partnerName;
+  try {
+    if(oldCid){
+      await Promise.allSettled([
+        _restDelete('daily_couples/'+encodeURIComponent(oldCid)),
+        _restPatch('daily_users/'+encodeURIComponent(username),
+                   {coupleId:null, partner:null}),
+        oldPartner ? _restPatch('daily_users/'+encodeURIComponent(oldPartner),
+                                {coupleId:null, partner:null})
+                   : Promise.resolve()
+      ]);
     }
-  }catch(e){console.error(e);}
+  } catch(e){ console.error('unlink REST failed:', e); }
 
   // Save current data to local before switching
   saveLocal();
@@ -2538,7 +2667,9 @@ async function doUnlink(){
   localStorage.removeItem('daily_partner_nick');
   localStorage.removeItem('daily_couple_since');
 
-  // Re-init without couple room (back to global)
+  // Reset sync signatures so we re-fetch at the new (private) path
+  _lastEntriesSig = ''; _lastStatusSig = '';
+  // Re-init without couple room (back to private path) — also restarts polling
   reInitWithCoupleRoom();
   renderCoupleCard();
   toast('已解除绑定');
